@@ -98,6 +98,25 @@ zkey init
 
 以下命令在安装工具的机器执行，若 PATH 尚未更新，用 `~/.local/bin/zkey` 替代 `zkey`。
 
+### 命令与参数
+
+以下语法中，`[]` 表示可选参数，`...` 表示可重复；这些符号不需要原样输入。
+
+| 命令 | 参数及行为 | 示例 |
+| --- | --- | --- |
+| `zkey init` | 无参数；输入两次新主密码，已有库时拒绝覆盖 | `zkey init` |
+| `zkey set NAME [--stdin]` | `NAME` 为库中名称；默认隐藏输入值，`--stdin` 从标准输入读取完整文本；覆盖同名条目 | `zkey set work/token` |
+| `zkey import-env NAME...` | 至少一个已 export 的变量名，不可重复；保存为同名条目，不接受 `ENV=KEY` 映射或变量值 | `zkey import-env API_TOKEN SERVICE_TOKEN` |
+| `zkey get NAME` | 读取一个条目，将明文原样输出到 stdout，不追加换行 | `zkey get work/token` |
+| `zkey list` | 无参数；解锁后仅列出名称，按名称排序 | `zkey list` |
+| `zkey passwd` | 无参数；先输入当前密码，再输入两次新密码 | `zkey passwd` |
+| `zkey run --env ENV=KEY ... -- COMMAND [ARG...]` | `--env` 至少一次，可重复；`ENV` 是目标环境变量，`KEY` 是库中名称，`ENV` 不可重复；`--` 后是程序及其参数 | `zkey run --env API_TOKEN=work/token -- python3 app.py` |
+| `zkey -h` / `zkey --help` | 查看帮助，无需解锁；子命令也支持 `--help` | `zkey import-env --help` |
+
+库中名称 `NAME` / `KEY` 长度为 1–128 个字符，以英文字母或数字开头，其余只允许英文字母、数字、`_ . : / -`。`run` 的 `ENV` 以英文字母或下划线开头，其余只允许英文字母、数字和下划线。`import-env` 的名称必须同时满足两种规则，因此只能以英文字母开头。值必须是非空 UTF-8 文本，不能包含 NUL；允许多行。
+
+`--env API_TOKEN=work/token` 也可写为 `--env=API_TOKEN=work/token`。所有命令的主密码都从交互终端读取，不支持密码参数。下面给出常用组合示例。
+
 ```bash
 # 输入主密码，再隐藏输入密钥值。已有同名项会被替换。
 zkey set OPENAI_API_KEY
@@ -127,6 +146,18 @@ zkey passwd
 
 `import-env` 需要 zkey v0.3.0 或更新版本（Go 实现）。它只读取明确指定的变量，已有同名条目会被替换，其他条目保留。任一变量未 export、为空或不是有效 UTF-8 文本时，在解锁前停止，整个密钥库不写入。全部有效后只输入一次主密码，并将本批条目一次性写入；只报告数量，不输出值。变量名称需以字母开头，只含字母、数字和下划线，最长 128 个字符；不接受以下划线开头的名称。请在持有这些变量的终端中执行，不要将值作为命令参数。
 
+批量导入示例：如果变量已在当前 shell 中赋值，先将其 export（不会打印值），再明确列出需要保存的名称：
+
+```bash
+export API_TOKEN SERVICE_TOKEN REGION
+zkey import-env API_TOKEN SERVICE_TOKEN REGION
+
+# 只检查库中的名称，不输出值。
+zkey list
+```
+
+上例假定变量已有非空值；`export NAME` 不会自动生成值。命令只读取当前终端传给进程的环境，不读取 `.env` 文件，也不自动加载 shell 配置。导入完成后，重新运行相同命令可更新这些条目；其他条目保持不变。
+
 Python 程序使用 `run` 注入的变量即可：
 
 ```python
@@ -145,6 +176,37 @@ Agent 优先使用 `run` 启动需要密钥的代码。请在你自己控制的�
 
 ## zellij 会话入口 zwork
 
+### 参数与示例
+
+```text
+zwork SESSION [KEY | ENV=KEY ...]
+zwork -h
+zwork --help
+```
+
+| 参数 | 含义 | 示例 |
+| --- | --- | --- |
+| `SESSION` | 必填会话名；以英文字母或数字开头，其余只允许英文字母、数字、`_ . -` | `dev-agent` |
+| `KEY` | 可选库中名称，同时作为环境变量名；必须满足两种名称规则 | `API_TOKEN` |
+| `ENV=KEY` | 可选映射；将库中 `KEY` 注入环境变量 `ENV`；多个参数的 `ENV` 不可重复 | `API_TOKEN=work/token` |
+| `-h` / `--help` | 显示帮助，无需解锁 | `zwork --help` |
+
+```bash
+# 新建会话，显式选择两个同名条目。
+zwork dev-agent API_TOKEN SERVICE_TOKEN
+
+# 新建另一个会话，使用不同的环境变量名称。
+zwork dev-mapped API_TOKEN=work/token
+
+# 重连已存在的活跃会话，不重复解锁，不再指定密钥。
+zwork dev-agent
+
+# 在含 .zkey.json 的项目中，新会话从配置读取映射。
+zwork project-agent
+```
+
+### 项目配置
+
 项目根目录可保存 `.zkey.json`，只保存环境变量到密钥名称的映射，不填写密钥值：
 
 ```json
@@ -155,6 +217,12 @@ Agent 优先使用 `run` 启动需要密钥的代码。请在你自己控制的�
   }
 }
 ```
+
+| 配置项 | 含义 | 示例 |
+| --- | --- | --- |
+| `env` | 唯一允许的顶层字段，必须为非空对象 | `{ "env": { "API_TOKEN": "work/token" } }` |
+| `env` 中的字段名 | 注入会话的环境变量名，规则与 `zkey run` 的 `ENV` 相同 | `API_TOKEN` |
+| `env` 中的字符串值 | keystore 中已有的密钥名称，不是密钥值 | `work/token` |
 
 先用 `zkey set work/openai` 等命令保存对应密钥；然后在项目目录执行：
 
@@ -256,7 +324,7 @@ zkey list
 
 ### 4. 多设备使用约定
 
-指定一台设备作为主要修改端，其他设备按需复制最新密文。两个设备各自执行 `set` 或 `passwd` 会产生独立版本；工具不自动同步或合并，复制整个文件会替换全部内容。不要把它当成多人或多端并发编辑的数据库。
+指定一台设备作为主要修改端，其他设备按需复制最新密文。两个设备各自执行 `set`、`import-env` 或 `passwd` 会产生独立版本；工具不自动同步或合并，复制整个文件会替换全部内容。不要把它当成多人或多端并发编辑的数据库。
 
 ## 验证与 Python 兼容性
 
