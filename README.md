@@ -6,7 +6,7 @@
 
 ## 安装
 
-适用于 Linux。脚本使用 `/usr/bin/python3`，该解释器需要安装 `requirements.txt` 中的依赖；请按系统的 Python 包管理方式安装。`zwork` 另需 Zellij（已验证 0.45.1）及可选的 Git。
+适用于 Linux 和 macOS。依赖 Python 3 和 `requirements.txt` 中的 `cryptography`。源码默认使用 `/usr/bin/python3`；macOS 按下文使用绑定独立虚拟环境的启动文件。`zwork` 另需 Zellij 及可选的 Git。Windows 不在当前支持范围内。
 
 先获取源码，然后在仓库根目录执行安装。私有仓库需要当前设备已有 GitHub 访问权限：
 
@@ -14,6 +14,8 @@
 git clone https://github.com/zyc945/zKeys.git
 cd zKeys
 ```
+
+### Linux
 
 例如 Debian / Ubuntu 可通过系统包安装依赖：
 
@@ -35,7 +37,43 @@ ln -sfn "$HOME/.config/z-keystore/zwork.py" "$HOME/.local/bin/zwork"
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-将 PATH 配置加入自己的 shell 启动文件即可长期生效。请确保 `~/.local/bin/zellij` 是可执行文件或指向已安装 Zellij 的链接。安装命令仅安装程序及说明，不复制或初始化 `vault.json`；更新前请停用正在执行的工具命令。
+### macOS
+
+先确保已安装可用的 Python 3（可使用已有 Python 或 Homebrew Python）。不要给 Apple 系统 Python 全局安装依赖。以下命令在源码目录运行，创建专用虚拟环境与固定解释器路径的启动文件；不会改变源码、密钥库位置或加密格式。日常使用无需激活虚拟环境，也不依赖当前项目的 Python 环境：
+
+```bash
+(
+  set -eu
+  install -d -m 700 "$HOME/.config/z-keystore" "$HOME/.local/bin"
+  python3 -m venv "$HOME/.config/z-keystore/.venv"
+  "$HOME/.config/z-keystore/.venv/bin/python3" -m pip install -r requirements.txt
+  "$HOME/.config/z-keystore/.venv/bin/python3" - <<'PY'
+from pathlib import Path
+import shlex
+
+directory = Path.home() / '.config/z-keystore'
+bindir = Path.home() / '.local/bin'
+for command, filename in [('zkey', 'z_keystore.py'), ('zwork', 'zwork.py')]:
+    target = directory / filename
+    target.write_bytes(Path(filename).read_bytes())
+    target.chmod(0o700)
+    launcher = bindir / command
+    if launcher.is_symlink():
+        launcher.unlink()
+    launcher.write_text('#!/bin/sh\nexec ' + shlex.quote(str(directory / '.venv/bin/python3'))
+                        + ' ' + shlex.quote(str(target)) + ' "$@"\n')
+    launcher.chmod(0o700)
+PY
+  install -m 600 README.md "$HOME/.config/z-keystore/README.md"
+)
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+不要再执行 Linux 章节的同名符号链接命令。更新工具时重复本节步骤即可，不需要初始化或重建已有库。`.venv` 和启动文件属于本机安装，跨设备时不复制它们。
+
+### PATH 与 Zellij
+
+将 PATH 配置加入自己的 shell 启动文件（macOS 通常为 `~/.zshrc`）即可长期生效。请确保 `~/.local/bin/zellij` 是可执行文件或指向已安装 Zellij 的链接。安装命令仅安装程序及说明，不复制或初始化 `vault.json`；更新前请停用正在执行的工具命令。
 
 若 Zellij 安装在其他位置，可建立链接（将源路径替换为实际可执行文件路径；目标已存在时先检查，不覆盖）：
 
@@ -51,11 +89,11 @@ zwork --help
 "$HOME/.local/bin/zellij" --version
 ```
 
-只使用 `zkey` 时不需要安装 Zellij。Git 用于 zwork 从项目子目录发现仓库根目录；缺少 Git 时只能按当前目录查找配置。当前安装步骤面向 Linux，未承诺 macOS / Windows 原样可用。
+只使用 `zkey` 时不需要安装 Zellij。Git 用于 zwork 从项目子目录发现仓库根目录；缺少 Git 时只能按当前目录查找配置。macOS 的 Apple Silicon Homebrew 通常将 Zellij 安装到 `/opt/homebrew/bin/zellij`，以当前设备 `command -v zellij` 的输出为准。
 
 ## 使用
 
-个人加密密钥库。依赖系统 `/usr/bin/python3` 和 `cryptography`。默认数据目录为 `~/.config/z-keystore`，密钥名称和值一起加密保存到 `vault.json`。目录权限 700，数据和锁文件 600。使用 Scrypt（N=32768、r=8、p=1）派生 AES-256-GCM 密钥，每次保存生成新 salt 和 nonce，写入使用文件锁与原子替换。
+个人加密密钥库。依赖安装步骤选定的 Python 3 和 `cryptography`。默认数据目录为 `~/.config/z-keystore`，密钥名称和值一起加密保存到 `vault.json`。目录权限 700，数据和锁文件 600。使用 Scrypt（N=32768、r=8、p=1）派生 AES-256-GCM 密钥，每次保存生成新 salt 和 nonce，写入使用文件锁与原子替换。
 
 首次使用，请你本人在交互终端运行，设置主密码，无硬性长度限制，建议使用较长的随机口令。主密码不回显，不接受命令参数或环境变量。忘记主密码无法恢复。
 
@@ -170,6 +208,8 @@ zwork 要求 Zellij 位于 `~/.local/bin/zellij`（已验证版本 0.45.1）；z
 
 当前每个用户使用固定路径 `~/.config/z-keystore/vault.json`，没有多库切换功能。迁移的是密钥数据，不是运行中的会话，也不会自动部署 SSH 公钥或登录配置。
 
+macOS 和 Linux 使用相同的 v1 文件格式，不绑定用户名、UID 或设备。已用虚拟密钥验证 macOS 写入 → Linux 解锁并重新保存 → macOS 解锁，包含中文口令和多行文本；无需转换密文。两端分别安装工具，只复制 `vault.json`。
+
 ### 1. 准备目标设备
 
 按安装章节安装相同或兼容版本的工具和依赖，以目标用户操作。**不要运行 `zkey init`**。源端暂停密钥库写入，目标端停止所有 `zkey` 操作。
@@ -222,12 +262,14 @@ zkey list
 
 ## 测试
 
-在仓库根目录运行（需要 cryptography）：
+在仓库根目录运行（需要 cryptography；macOS 将 `/usr/bin/python3` 替换为 `"$HOME/.config/z-keystore/.venv/bin/python3"`）：
 
 ```bash
 /usr/bin/python3 -m unittest discover -s tests -v
 ```
 
 测试只使用临时目录、虚拟口令和虚拟密钥，不读取个人密钥库，不访问云服务，不修改现有 Zellij 会话。
+
+兼容性验证环境：macOS 的 Python 3.9.6 / 3.9.13、cryptography 50.0.2，以及 Linux 的 Python 3.10.12、cryptography 3.4.8；两端均通过 26 项测试。macOS Zellij 0.45.0 已验证交互解锁和新 pane 的密钥继承，Linux 原有验证版本为 0.45.1。这些是已验证组合，不代表要求固定到这些旧 Python 版本。
 
 仓库仅保存源码、说明和测试。不要提交 `vault.json`、主密码、实际密钥或含密钥的环境文件；`.zkey.json` 中只写密钥名称。
