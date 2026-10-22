@@ -6,7 +6,7 @@
 
 ## 安装
 
-当前正式版本使用 Go，实现与 Python 版相同的命令和 v1 keystore 格式。目标设备不需要 Python、pip、虚拟环境、Go 或单独的加密库。`zwork` 仍需安装 Zellij；从 Git 子目录发现项目配置时需要 Git。支持 macOS / Linux，不支持 Windows。
+当前正式版本使用 Go，保留 Python 版已有命令和 v1 keystore 格式。目标设备不需要 Python、pip、虚拟环境、Go 或单独的加密库。`zwork` 仍需安装 Zellij；从 Git 子目录发现项目配置时需要 Git。支持 macOS / Linux，不支持 Windows。
 
 ### 下载二进制
 
@@ -21,16 +21,16 @@
 
 使用 `uname -s` 和 `uname -m` 确认设备类型。不同平台需要不同二进制，`vault.json` 通用。每个压缩包包含 `zkey`、`zwork` 和 README。
 
-例如下载 `zkeys-v0.2.0-darwin-arm64.tar.gz` 后，在下载目录校验（Linux 可将 `shasum -a 256` 换成 `sha256sum`）：
+例如下载 `zkeys-v0.3.0-darwin-arm64.tar.gz` 后，在下载目录校验（Linux 可将 `shasum -a 256` 换成 `sha256sum`）：
 
 ```bash
-shasum -a 256 zkeys-v0.2.0-darwin-arm64.tar.gz
+shasum -a 256 zkeys-v0.3.0-darwin-arm64.tar.gz
 ```
 
 确认 SHA-256 摘要与 `SHA256SUMS` 中对应文件的摘要一致，再解压：
 
 ```bash
-tar -xzf zkeys-v0.2.0-darwin-arm64.tar.gz
+tar -xzf zkeys-v0.3.0-darwin-arm64.tar.gz
 ```
 
 校验和用于检查下载完整性，下载来源仍应为该仓库的 Release。若浏览器下载的文件被 macOS Gatekeeper 拦截，先按系统提示确认来源并允许运行，不要关闭系统安全机制。
@@ -79,10 +79,10 @@ CGO_ENABLED=0 go build -trimpath -o zwork ./cmd/zwork
 然后按上面的安装步骤安装。发布四个平台的包：
 
 ```bash
-./scripts/build-release.sh v0.2.0
+./scripts/build-release.sh v0.3.0
 ```
 
-产物位于 `dist/v0.2.0/`，包含四个压缩包和 `SHA256SUMS`；已存在的发布目录会被拒绝覆盖。Linux 产物关闭 CGO，不依赖目标设备的 glibc 或 OpenSSL；macOS 仍使用操作系统提供的系统库。构建脚本不会发布或部署。
+产物位于 `dist/v0.3.0/`，包含四个压缩包和 `SHA256SUMS`；已存在的发布目录会被拒绝覆盖。Linux 产物关闭 CGO，不依赖目标设备的 glibc 或 OpenSSL；macOS 仍使用操作系统提供的系统库。构建脚本不会发布或部署。
 
 ## 使用
 
@@ -101,6 +101,9 @@ zkey init
 ```bash
 # 输入主密码，再隐藏输入密钥值。已有同名项会被替换。
 zkey set OPENAI_API_KEY
+
+# 将当前终端已 export 的指定变量保存为同名条目，只输入一次主密码。
+zkey import-env OPENAI_API_KEY ANTHROPIC_API_KEY
 
 # 解锁后列出名称，不显示值。
 zkey list
@@ -121,6 +124,8 @@ zkey set work/private-key --stdin < /path/to/private-file
 # 更改主密码，旧备份仍需旧密码解锁。
 zkey passwd
 ```
+
+`import-env` 需要 zkey v0.3.0 或更新版本（Go 实现）。它只读取明确指定的变量，已有同名条目会被替换，其他条目保留。任一变量未 export、为空或不是有效 UTF-8 文本时，在解锁前停止，整个密钥库不写入。全部有效后只输入一次主密码，并将本批条目一次性写入；只报告数量，不输出值。变量名称需以字母开头，只含字母、数字和下划线，最长 128 个字符；不接受以下划线开头的名称。请在持有这些变量的终端中执行，不要将值作为命令参数。
 
 Python 程序使用 `run` 注入的变量即可：
 
@@ -179,7 +184,7 @@ zwork 要求 Zellij 位于 `~/.local/bin/zellij`（已验证版本 0.45.1）；z
 
 只需备份完整的 `~/.config/z-keystore/vault.json`；它包含加密的名称和值，以及解密所需的版本、salt 和 nonce。加密算法参数由兼容版本的工具定义，建议同时记录源码版本（在源码目录运行 `git rev-parse HEAD`）。主密码单独保管，不放进备份目录。
 
-先等待所有 `zkey` 命令结束，备份期间不要执行 `init`、`set` 或 `passwd`。已启动的 Zellij 会话可以继续运行，它不需要持续读取密钥库。以下命令创建独立备份目录，不覆盖旧备份：
+先等待所有 `zkey` 命令结束，备份期间不要执行 `init`、`set`、`import-env` 或 `passwd`。已启动的 Zellij 会话可以继续运行，它不需要持续读取密钥库。以下命令创建独立备份目录，不覆盖旧备份：
 
 ```bash
 (
@@ -255,7 +260,7 @@ zkey list
 
 ## 验证与 Python 兼容性
 
-Python 源码 `z_keystore.py`、`zwork.py` 保留为格式参照和回退入口，不参与 Go 版运行。Python 版仍需 `requirements.txt` 中的依赖；回退时可用已安装该依赖的解释器显式运行旧脚本。两种实现均可直接读写 v1 文件，改密码后另一实现使用新密码即可。
+Python 源码 `z_keystore.py`、`zwork.py` 保留为格式参照和回退入口，不参与 Go 版运行。Python 版仍需 `requirements.txt` 中的依赖；回退时可用已安装该依赖的解释器显式运行旧脚本。Python 参考版不支持新增的 `import-env` 命令；两种实现均可直接读写 v1 文件，改密码后另一实现使用新密码即可。
 
 运行 Go 单元测试和静态检查：
 

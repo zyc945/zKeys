@@ -58,7 +58,7 @@ class GoCompatibilityTests(unittest.TestCase):
                 store.write(entries, password)
 
     def interactive(self, command, args, passwords=(), stdin=None, home=None,
-                    interrupt=False, immediate=False):
+                    interrupt=False, immediate=False, environment=None):
         master, slave = pty.openpty()
         fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 100, 0, 0))
 
@@ -76,7 +76,8 @@ class GoCompatibilityTests(unittest.TestCase):
             process = subprocess.Popen(
                 command + args, stdin=subprocess.PIPE if stdin is not None else slave,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                env=self.environment(home), preexec_fn=terminal_session,
+                env=environment if environment is not None else self.environment(home),
+                preexec_fn=terminal_session,
                 pass_fds=(slave,), cwd=ROOT)
             os.close(slave)
             slave = None
@@ -187,6 +188,58 @@ class GoCompatibilityTests(unittest.TestCase):
         self.assertNotIn(value.encode(), result.stdout + result.stderr + result.terminal)
         with self.store.locked():
             self.assertEqual(self.store.read(PASSWORD), {'hidden': value})
+
+    def test_import_env_merges_only_selected_values_with_one_password(self):
+        self.seed({'PRESENT': 'fake-old-value', 'preserved': UNSELECTED})
+        environment = self.environment()
+        environment.update({'PRESENT': SECRET, 'SECOND': 'fake-second-value',
+                            'NOT_SELECTED': 'fake-unselected-environment'})
+        result = self.success(self.go, ['import-env', 'PRESENT', 'SECOND'], [PASSWORD],
+                              environment=environment)
+        self.assertEqual(result.stdout, b'')
+        self.assertEqual(result.terminal.count('主密码'.encode('utf-8')), 1)
+        for value in (SECRET, 'fake-second-value', 'fake-unselected-environment'):
+            self.assertNotIn(value.encode('utf-8'),
+                             result.stdout + result.stderr + result.terminal)
+        with self.store.locked():
+            self.assertEqual(self.store.read(PASSWORD),
+                             {'PRESENT': SECRET, 'SECOND': 'fake-second-value',
+                              'preserved': UNSELECTED})
+        self.assertEqual(stat.S_IMODE(self.store.path.stat().st_mode), 0o600)
+
+    def test_import_env_missing_empty_or_invalid_aborts_before_password_or_write(self):
+        self.seed({'preserved': UNSELECTED})
+        before = self.store.path.read_bytes()
+        for value in (None, '', 'fake-invalid-\udcff-text'):
+            with self.subTest(value_kind='missing' if value is None else 'present'):
+                environment = self.environment()
+                environment['FIRST'] = SECRET
+                if value is not None:
+                    environment['SECOND'] = value
+                # Holding the vault lock also proves validation happens before locking.
+                with self.store.locked():
+                    result = subprocess.run(self.go + ['import-env', 'FIRST', 'SECOND'],
+                                            stdin=subprocess.DEVNULL, capture_output=True,
+                                            env=environment, start_new_session=True, timeout=5)
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertEqual(result.stdout, b'')
+                self.assertIn(b'SECOND', result.stderr)
+                self.assertNotIn('主密码'.encode('utf-8'), result.stderr)
+                self.assertNotIn(SECRET.encode('utf-8'), result.stderr)
+                self.assertNotIn(b'fake-invalid-', result.stderr)
+                self.assertEqual(self.store.path.read_bytes(), before)
+
+    def test_import_env_wrong_password_leaves_vault_unchanged(self):
+        self.seed({'preserved': UNSELECTED})
+        before = self.store.path.read_bytes()
+        environment = self.environment()
+        environment['TOKEN'] = SECRET
+        result = self.interactive(self.go, ['import-env', 'TOKEN'], ['fake-wrong-password'],
+                                  environment=environment)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, b'')
+        self.assertNotIn(SECRET.encode('utf-8'), result.stderr + result.terminal)
+        self.assertEqual(self.store.path.read_bytes(), before)
 
     def test_run_exec_selects_only_requested_key_and_preserves_exit_code(self):
         self.seed({'one': SECRET, 'two': UNSELECTED})
