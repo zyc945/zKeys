@@ -21,16 +21,16 @@
 
 使用 `uname -s` 和 `uname -m` 确认设备类型。不同平台需要不同二进制，`vault.json` 通用。每个压缩包包含 `zkey`、`zwork` 和 README。
 
-例如下载 `zkeys-v0.3.0-darwin-arm64.tar.gz` 后，在下载目录校验（Linux 可将 `shasum -a 256` 换成 `sha256sum`）：
+例如下载 `zkeys-v0.4.0-darwin-arm64.tar.gz` 后，在下载目录校验（Linux 可将 `shasum -a 256` 换成 `sha256sum`）：
 
 ```bash
-shasum -a 256 zkeys-v0.3.0-darwin-arm64.tar.gz
+shasum -a 256 zkeys-v0.4.0-darwin-arm64.tar.gz
 ```
 
 确认 SHA-256 摘要与 `SHA256SUMS` 中对应文件的摘要一致，再解压：
 
 ```bash
-tar -xzf zkeys-v0.3.0-darwin-arm64.tar.gz
+tar -xzf zkeys-v0.4.0-darwin-arm64.tar.gz
 ```
 
 校验和用于检查下载完整性，下载来源仍应为该仓库的 Release。若浏览器下载的文件被 macOS Gatekeeper 拦截，先按系统提示确认来源并允许运行，不要关闭系统安全机制。
@@ -79,10 +79,10 @@ CGO_ENABLED=0 go build -trimpath -o zwork ./cmd/zwork
 然后按上面的安装步骤安装。发布四个平台的包：
 
 ```bash
-./scripts/build-release.sh v0.3.0
+./scripts/build-release.sh v0.4.0
 ```
 
-产物位于 `dist/v0.3.0/`，包含四个压缩包和 `SHA256SUMS`；已存在的发布目录会被拒绝覆盖。Linux 产物关闭 CGO，不依赖目标设备的 glibc 或 OpenSSL；macOS 仍使用操作系统提供的系统库。构建脚本不会发布或部署。
+产物位于 `dist/v0.4.0/`，包含四个压缩包和 `SHA256SUMS`；已存在的发布目录会被拒绝覆盖。Linux 产物关闭 CGO，不依赖目标设备的 glibc 或 OpenSSL；macOS 仍使用操作系统提供的系统库。构建脚本不会发布或部署。
 
 ## 使用
 
@@ -111,6 +111,7 @@ zkey init
 | `zkey list` | 无参数；解锁后仅列出名称，按名称排序 | `zkey list` |
 | `zkey passwd` | 无参数；先输入当前密码，再输入两次新密码 | `zkey passwd` |
 | `zkey run --env ENV=KEY ... -- COMMAND [ARG...]` | `--env` 至少一次，可重复；`ENV` 是目标环境变量，`KEY` 是库中名称，`ENV` 不可重复；`--` 后是程序及其参数 | `zkey run --env API_TOKEN=work/token -- python3 app.py` |
+| `zkey ssh import/export` | 加密保存和恢复指定 SSH 配置及密钥，参数见下文 SSH 章节 | `zkey ssh import work --host server-a` |
 | `zkey -h` / `zkey --help` | 查看帮助，无需解锁；子命令也支持 `--help` | `zkey import-env --help` |
 
 库中名称 `NAME` / `KEY` 长度为 1–128 个字符，以英文字母或数字开头，其余只允许英文字母、数字、`_ . : / -`。`run` 的 `ENV` 以英文字母或下划线开头，其余只允许英文字母、数字和下划线。`import-env` 的名称必须同时满足两种规则，因此只能以英文字母开头。值必须是非空 UTF-8 文本，不能包含 NUL；允许多行。
@@ -172,7 +173,7 @@ Agent 优先使用 `run` 启动需要密钥的代码。请在你自己控制的�
 
 此工具用于保护静态密钥，不能保证对 root、具有 Docker 管理权限的用户或同账号恶意进程保密。解锁后目标程序能够读取、复制获授权的密钥，子进程也可能继承；程序退出不等于凭证被撤销。Go 不保证所有秘密内存副本被安全擦除；工具将 core 文件大小上限设为 0（目标程序继承此限制），但不能保证系统级崩溃收集器不采集内存，也无法控制 swap、休眠、管理员调试或所有程序日志。
 
-文本形式的 SSH 私钥可通过 `set --stdin` 保存，但工具不提供 SSH agent，也不会自动配置 SSH 登录。当前值是文本，不支持任意二进制文件或包含 NUL 字符的内容。
+单个文本形式的 SSH 私钥仍可通过 `set --stdin` 保存。需要连同连接配置一起迁移时，使用下文的 `ssh import/export`。工具不提供 SSH agent。普通条目只支持文本，不支持任意二进制文件或包含 NUL 字符的内容。
 
 ## zellij 会话入口 zwork
 
@@ -248,11 +249,116 @@ zwork 要求 Zellij 位于 `~/.local/bin/zellij`（已验证版本 0.45.1）；z
 
 如果会话显示 EXITED，zwork 会拒绝直接恢复，请使用新的会话名，通过项目配置或显式参数重新解锁创建。断开 SSH 或 detach 不会清除活跃会话中的密钥；只有结束会话及相关进程才能停止其继续保留。
 
+## SSH 配置与密钥迁移
+
+需要 zkey v0.4.0 或更新版本。只处理明确选择的连接及它们引用的跳板别名；不自动打包整个 `.ssh`，不连接服务器、不执行代理命令、不提供 SSH agent。SSH bundle 存在普通条目 `ssh/NAME` 中，其内容为带类型和版本的 JSON 字符串；外层 keystore v1 格式不变，原有 Python 参考实现仍能读写该库。
+
+### 命令与参数
+
+```text
+zkey ssh import NAME --host HOST [--host HOST...] [--config PATH]
+zkey ssh export NAME [--with-private-keys] [--install-config]
+zkey ssh --help
+```
+
+| 参数 | 用途与默认值 | 示例 |
+| --- | --- | --- |
+| `NAME` | bundle 名称，1–64 个英文字母、数字、`_ . -`，以字母或数字开头；不能含 `/` | `work` |
+| `import --host HOST` | 必填，明确选择配置中的具体主机别名；可重复选择不同别名 | `--host server-a --host server-b` |
+| `import --config PATH` | 源 SSH 配置文件；默认 `~/.ssh/config` | `--config "$HOME/.ssh/work-config"` |
+| `export --with-private-keys` | 明确允许将私钥写入目标磁盘；bundle 含私钥而未指定时，整个导出拒绝执行 | `--with-private-keys` |
+| `export --install-config` | 将生成配置接入 `~/.ssh/config`，仅允许该文件不存在或为空；已有非空配置时整批停止 | `--install-config` |
+
+导入和导出各输入一次 keystore 主密码。导入不覆盖已有的 `ssh/NAME` 条目；重新保存快照时使用新名称。导出不覆盖已有 `~/.ssh/zkeys/NAME` 目录，发生冲突时使用另一个 bundle 名称或先自行备份并移走旧目录；没有强制覆盖参数。
+
+### 导入示例
+
+假设源配置包含如下静态连接；实际密钥文件需已经存在：
+
+```sshconfig
+Host jump-a
+    HostName jump.example.com
+    User deploy
+    Port 22
+    IdentityFile ~/.ssh/work_ed25519
+
+Host server-a
+    HostName 10.0.0.10
+    User deploy
+    Port 2222
+    IdentityFile ~/.ssh/work_ed25519
+    ProxyJump jump-a
+    IdentitiesOnly yes
+```
+
+```bash
+# 保存 server-a 及其引用的 jump-a；共享的文件只存一份。
+zkey ssh import work --host server-a
+
+# 从另一个配置文件选择多个连接，保存为独立快照。
+zkey ssh import work-next --config "$HOME/.ssh/work-config" --host server-a --host server-b
+
+# 只检查条目名称，应包含 ssh/work；不要用 get 打印 bundle。
+zkey list
+```
+
+导入保留所引用私钥的原始字节、存在的公钥/证书伴随文件，以及显式引用的完整 known_hosts 文件。不会删除源配置或源密钥。已有私钥口令不会移除或保存到额外字段；将来 SSH 认证时可能仍需要该口令，它与 keystore 主密码相互独立。
+
+### 在另一台设备恢复
+
+先按下文跨设备迁移步骤复制加密 `vault.json` 并安装兼容版本，不能重新 `init`。然后在目标设备执行：
+
+```bash
+# 适合新设备：配置不存在或为空时，恢复文件并接入主配置。
+zkey ssh export work --with-private-keys --install-config
+ssh server-a
+```
+
+导出目录如下；文件名由工具生成，不按包内原始路径写入目标设备：
+
+```text
+~/.ssh/zkeys/work/
+├── config
+└── files/
+    ├── f0001
+    └── ...
+```
+
+生成的 `IdentityFile`、`CertificateFile`、`UserKnownHostsFile` 路径会指向目标目录。目录权限 `700`、文件权限 `600`；HOME 必须属于当前用户且不可被组或其他用户写入，已有 `.ssh` 和 `zkeys` 目录必须为 `700`。拒绝这些目录为符号链接，以及已存在的 bundle 目录。HOME 路径不得包含 `%`、`${...}`、反斜线或 glob 字符，避免 OpenSSH 路径展开。`--install-config` 遇到原有空配置时先备份；遇到非空配置时不会发布私钥目录或修改主配置。导出不会改写 keystore。
+
+已有正常使用的主配置时，先仅导出到独立目录：
+
+```bash
+zkey ssh export work --with-private-keys
+ssh -F "$HOME/.ssh/zkeys/work/config" server-a
+```
+
+此时 `~/.ssh/config` 保持不变。如需用普通 `ssh server-a`，自行备份并审查已有配置后，在合适位置添加：
+
+```sshconfig
+Include ~/.ssh/zkeys/work/config
+```
+
+OpenSSH 多数选项采用首次匹配的值，`Host *` 和 Include 的位置会影响行为；工具不自动合并已有规则。导出成功只说明文件恢复完成，不代表目标网络、代理程序和远端授权一定可用。
+
+### 第一版支持范围与限制
+
+- 支持具体别名的 `Host`、同一块多个具体别名，以及独立的 `Host *` 默认块。按源文件顺序处理默认值；`IdentityFile`、`CertificateFile` 可累加，`ProxyJump` 与 `ProxyCommand` 按支持范围内的 OpenSSH 优先级处理。`ProxyJump none` 后接 `ProxyCommand` 在不同 OpenSSH 版本中行为不同，第一版明确拒绝此组合；请将连接配置明确为一种代理方式。
+- 所选连接必须能从指定配置文件取得明确的 `HostName`、`User` 和文件型 `IdentityFile`；端口未指定时使用 22。不自动读取 `/etc/ssh/ssh_config` 或发现隐式默认私钥。
+- `ProxyJump` 支持逗号分隔的配置别名和 `none`；递归包含引用的别名，缺失或循环依赖拒绝导入。第一版不支持在跳板参数中直接写 `user@host:port`，请定义为独立 Host。
+- 支持的静态选项为 `HostName`、`User`、`Port`、`IdentityFile`、`CertificateFile`、`ProxyJump`、`ProxyCommand`、`IdentitiesOnly`、`ServerAliveInterval`、`ServerAliveCountMax`、`HostKeyAlias`、`CheckHostIP`、`StrictHostKeyChecking`、`UserKnownHostsFile`、`BatchMode`、`PasswordAuthentication`、`KbdInteractiveAuthentication`、`PubkeyAuthentication`、`PreferredAuthentications`、`ConnectTimeout`、`ConnectionAttempts`、`AddressFamily`、`Compression`。时间/计数选项仅支持整数；字段值还需符合对应的静态格式。
+- `ProxyCommand` 只保存单行原文，不执行，也不打包它引用的程序或脚本；目标设备需要自行具备相同依赖。
+- 不支持 `Include`、`Match`、复杂 Host 模式、动态路径 token 或环境变量展开；遇到不支持的指令明确报错，不静默忽略。密钥文件路径支持绝对路径和 `~/`；不支持相对路径、`~其他用户`、`%` 或 `${...}` 展开。整个指定配置文件都会检查；即使不支持的指令位于未选择的 Host 块，也会停止导入。
+- 保留显式的主机身份校验设置及指纹文件。源配置若使用 `/dev/null` 或 `none`，不会把它当作可信指纹文件，也不会自动增加信任或关闭校验。
+- 只迁移本地可读的文件型密钥；不迁移硬件令牌内的密钥、SSH agent 内存状态、登录密码或服务端 `authorized_keys`。
+
+私钥导出后受目标文件系统保护；如果原私钥没有口令，写出的就是明文私钥。共享服务器上只恢复确实需要的连接，`600` 权限无法防御 root 或同账号恶意进程。配置、主机信息与公钥也会以普通文件形式落盘。工具不会将私钥放入环境变量或输出到终端；不要对 `ssh/NAME` 使用会输出完整内容的 `zkey get`。
+
 ## 备份
 
 只需备份完整的 `~/.config/z-keystore/vault.json`；它包含加密的名称和值，以及解密所需的版本、salt 和 nonce。加密算法参数由兼容版本的工具定义，建议同时记录源码版本（在源码目录运行 `git rev-parse HEAD`）。主密码单独保管，不放进备份目录。
 
-先等待所有 `zkey` 命令结束，备份期间不要执行 `init`、`set`、`import-env` 或 `passwd`。已启动的 Zellij 会话可以继续运行，它不需要持续读取密钥库。以下命令创建独立备份目录，不覆盖旧备份：
+先等待所有 `zkey` 命令结束，备份期间不要执行 `init`、`set`、`import-env`、`ssh import` 或 `passwd`。已启动的 Zellij 会话可以继续运行，它不需要持续读取密钥库。以下命令创建独立备份目录，不覆盖旧备份：
 
 ```bash
 (
@@ -272,7 +378,7 @@ zwork 要求 Zellij 位于 `~/.local/bin/zellij`（已验证版本 0.45.1）；z
 
 ## 跨设备迁移与恢复
 
-当前每个用户使用固定路径 `~/.config/z-keystore/vault.json`，没有多库切换功能。迁移的是密钥数据，不是运行中的会话，也不会自动部署 SSH 公钥或登录配置。
+当前每个用户使用固定路径 `~/.config/z-keystore/vault.json`，没有多库切换功能。复制 vault 文件迁移的是加密数据，不是运行中的会话。SSH 连接配置需在目标设备显式执行 `ssh export` 恢复；不修改远端服务器的 `authorized_keys`。
 
 macOS 和 Linux 使用相同的 v1 文件格式，不绑定用户名、UID 或设备。已用虚拟密钥验证 macOS 写入 → Linux 解锁并重新保存 → macOS 解锁，包含中文口令和多行文本；无需转换密文。两端分别安装工具，只复制 `vault.json`。
 
@@ -328,7 +434,7 @@ zkey list
 
 ## 验证与 Python 兼容性
 
-Python 源码 `z_keystore.py`、`zwork.py` 保留为格式参照和回退入口，不参与 Go 版运行。Python 版仍需 `requirements.txt` 中的依赖；回退时可用已安装该依赖的解释器显式运行旧脚本。Python 参考版不支持新增的 `import-env` 命令；两种实现均可直接读写 v1 文件，改密码后另一实现使用新密码即可。
+Python 源码 `z_keystore.py`、`zwork.py` 保留为格式参照和回退入口，不参与 Go 版运行。Python 版仍需 `requirements.txt` 中的依赖；回退时可用已安装该依赖的解释器显式运行旧脚本。Python 参考版不支持新增的 `import-env` 和 `ssh` 命令；两种实现均可直接读写 v1 文件，改密码后另一实现使用新密码即可。
 
 运行 Go 单元测试和静态检查：
 
@@ -352,6 +458,14 @@ ZKEY_GO=/tmp/zkey-compat ZWORK_GO=/tmp/zwork-compat ZELLIJ_BIN="$HOME/.local/bin
 ```
 
 测试只使用临时 HOME、虚拟口令和虚拟密钥。跨语言用例覆盖双向创建/读取、改写/改密码、多行与中文、空/短口令、错误密码/篡改、权限/链接、无终端拒绝、Ctrl-C 回显恢复，以及 run 的 PID/退出码/PATH/锁释放。测试环境必须允许创建伪终端并打开 `/dev/tty`；不设置 `ZKEY_GO` 时跳过跨语言测试。
+
+SSH 导入导出集成测试只使用临时 HOME 和生成的测试密钥。设置 `ZKEY_SSHD` 后，还会以当前用户启动随机回环端口的临时 SSH 服务，检查直连与 ProxyJump 认证；不修改系统 SSH 服务：
+
+```bash
+ZKEY_GO=/tmp/zkey-compat ZKEY_SSHD=/usr/sbin/sshd python3 -m unittest discover -s tests -p test_ssh.py -v
+```
+
+需要 `ssh`、`ssh-keygen`，真实认证测试还需要可用的 `sshd`。不设置 `ZKEY_SSHD` 时跳过真实服务测试，文件迁移测试仍运行。SSH 测试覆盖原始密钥/证书/指纹文件保留、私钥导出开关、配置优先级、跳板依赖、冲突、权限和异常路径；测试输出不包含私钥。已实际进行测试 keystore 的 Mac → Linux → Mac 往返复制，并用 Python 回读/改写后由 Go 导出。
 
 发布验证边界：`darwin-arm64` 与 `linux-amd64` 实际运行测试及双向文件互通；`darwin-amd64` 与 `linux-arm64` 交叉编译并检查产物，未在对应硬件运行。Zellij 实际会话验证使用 macOS 0.45.0、Linux 0.45.1。二进制依赖的最低系统版本以构建所用 Go 工具链支持范围为准。
 
