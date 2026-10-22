@@ -6,94 +6,87 @@
 
 ## 安装
 
-适用于 Linux 和 macOS。依赖 Python 3 和 `requirements.txt` 中的 `cryptography`。源码默认使用 `/usr/bin/python3`；macOS 按下文使用绑定独立虚拟环境的启动文件。`zwork` 另需 Zellij 及可选的 Git。Windows 不在当前支持范围内。
+当前正式版本使用 Go，实现与 Python 版相同的命令和 v1 keystore 格式。目标设备不需要 Python、pip、虚拟环境、Go 或单独的加密库。`zwork` 仍需安装 Zellij；从 Git 子目录发现项目配置时需要 Git。支持 macOS / Linux，不支持 Windows。
 
-先获取源码，然后在仓库根目录执行安装。私有仓库需要当前设备已有 GitHub 访问权限：
+### 下载二进制
 
-```bash
-git clone https://github.com/zyc945/zKeys.git
-cd zKeys
-```
+从 [GitHub Releases](https://github.com/zyc945/zKeys/releases) 下载对应压缩包及 `SHA256SUMS`。仓库为私有时，需要登录有权限的 GitHub 账户。
 
-### Linux
+| 设备 | 压缩包平台后缀 |
+| --- | --- |
+| Linux x86_64 | `linux-amd64` |
+| Linux aarch64 / ARM64 | `linux-arm64` |
+| Mac Intel | `darwin-amd64` |
+| Mac Apple Silicon | `darwin-arm64` |
 
-例如 Debian / Ubuntu 可通过系统包安装依赖：
+使用 `uname -s` 和 `uname -m` 确认设备类型。不同平台需要不同二进制，`vault.json` 通用。每个压缩包包含 `zkey`、`zwork` 和 README。
 
-```bash
-sudo apt-get update
-sudo apt-get install python3 python3-cryptography
-```
-
-其他发行版使用对应包管理器；不要只在虚拟环境安装依赖，因为脚本固定使用 `/usr/bin/python3`。以下文件安装操作由日常使用工具的用户执行，不加 sudo：
+例如下载 `zkeys-v0.2.0-darwin-arm64.tar.gz` 后，在下载目录校验（Linux 可将 `shasum -a 256` 换成 `sha256sum`）：
 
 ```bash
-/usr/bin/python3 -c 'import cryptography'
-install -d -m 700 "$HOME/.config/z-keystore" "$HOME/.local/bin"
-install -m 700 z_keystore.py "$HOME/.config/z-keystore/z_keystore.py"
-install -m 700 zwork.py "$HOME/.config/z-keystore/zwork.py"
-install -m 600 README.md "$HOME/.config/z-keystore/README.md"
-ln -sfn "$HOME/.config/z-keystore/z_keystore.py" "$HOME/.local/bin/zkey"
-ln -sfn "$HOME/.config/z-keystore/zwork.py" "$HOME/.local/bin/zwork"
-export PATH="$HOME/.local/bin:$PATH"
+shasum -a 256 zkeys-v0.2.0-darwin-arm64.tar.gz
 ```
 
-### macOS
+确认 SHA-256 摘要与 `SHA256SUMS` 中对应文件的摘要一致，再解压：
 
-先确保已安装可用的 Python 3（可使用已有 Python 或 Homebrew Python）。不要给 Apple 系统 Python 全局安装依赖。以下命令在源码目录运行，创建专用虚拟环境与固定解释器路径的启动文件；不会改变源码、密钥库位置或加密格式。日常使用无需激活虚拟环境，也不依赖当前项目的 Python 环境：
+```bash
+tar -xzf zkeys-v0.2.0-darwin-arm64.tar.gz
+```
+
+校验和用于检查下载完整性，下载来源仍应为该仓库的 Release。若浏览器下载的文件被 macOS Gatekeeper 拦截，先按系统提示确认来源并允许运行，不要关闭系统安全机制。
+
+### 安装或升级
+
+在解压目录中，以日常用户执行，不加 sudo。先等待正在执行的 `zkey` / `zwork` 命令结束。下面先移除旧命令入口，因此既兼容 Python 版的符号链接，也兼容 Mac 的 shell 启动文件；不会沿旧链接覆盖 Python 源码：
 
 ```bash
 (
   set -eu
   install -d -m 700 "$HOME/.config/z-keystore" "$HOME/.local/bin"
-  python3 -m venv "$HOME/.config/z-keystore/.venv"
-  "$HOME/.config/z-keystore/.venv/bin/python3" -m pip install -r requirements.txt
-  "$HOME/.config/z-keystore/.venv/bin/python3" - <<'PY'
-from pathlib import Path
-import shlex
-
-directory = Path.home() / '.config/z-keystore'
-bindir = Path.home() / '.local/bin'
-for command, filename in [('zkey', 'z_keystore.py'), ('zwork', 'zwork.py')]:
-    target = directory / filename
-    target.write_bytes(Path(filename).read_bytes())
-    target.chmod(0o700)
-    launcher = bindir / command
-    if launcher.is_symlink():
-        launcher.unlink()
-    launcher.write_text('#!/bin/sh\nexec ' + shlex.quote(str(directory / '.venv/bin/python3'))
-                        + ' ' + shlex.quote(str(target)) + ' "$@"\n')
-    launcher.chmod(0o700)
-PY
+  rm -f "$HOME/.local/bin/zkey" "$HOME/.local/bin/zwork"
+  install -m 700 zkey "$HOME/.local/bin/zkey"
+  install -m 700 zwork "$HOME/.local/bin/zwork"
   install -m 600 README.md "$HOME/.config/z-keystore/README.md"
 )
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-不要再执行 Linux 章节的同名符号链接命令。更新工具时重复本节步骤即可，不需要初始化或重建已有库。`.venv` 和启动文件属于本机安装，跨设备时不复制它们。
+安装不会初始化或替换 `vault.json`，也不会删除 `.lock`、旧 Python 文件或 `.venv`。Python 版已有库直接使用，**不要重新运行 `init`**。升级前可按备份章节保存密文；不需要结束已运行的 Zellij 服务，新命令生效也不会刷新旧会话的环境。
 
-### PATH 与 Zellij
-
-将 PATH 配置加入自己的 shell 启动文件（macOS 通常为 `~/.zshrc`）即可长期生效。请确保 `~/.local/bin/zellij` 是可执行文件或指向已安装 Zellij 的链接。安装命令仅安装程序及说明，不复制或初始化 `vault.json`；更新前请停用正在执行的工具命令。
-
-若 Zellij 安装在其他位置，可建立链接（将源路径替换为实际可执行文件路径；目标已存在时先检查，不覆盖）：
+将 PATH 配置加入自己的 shell 启动文件（Mac 通常为 `~/.zshrc`）即可长期生效。只使用 `zkey` 时不需要 Zellij。使用 `zwork` 时，确保 `~/.local/bin/zellij` 是已安装 Zellij 的可执行文件或链接：
 
 ```bash
+# 替换为 command -v zellij 显示的实际路径；目标已存在时先检查，不覆盖。
 ln -s /absolute/path/to/zellij "$HOME/.local/bin/zellij"
-```
-
-检查安装：
-
-```bash
 zkey --help
 zwork --help
 "$HOME/.local/bin/zellij" --version
 ```
 
-只使用 `zkey` 时不需要安装 Zellij。Git 用于 zwork 从项目子目录发现仓库根目录；缺少 Git 时只能按当前目录查找配置。macOS 的 Apple Silicon Homebrew 通常将 Zellij 安装到 `/opt/homebrew/bin/zellij`，以当前设备 `command -v zellij` 的输出为准。
+Apple Silicon Homebrew 常见路径为 `/opt/homebrew/bin/zellij`。不需要为本工具改写系统 Python，也不需要激活任何虚拟环境。
+
+### 从源码构建
+
+构建机需要 `go.mod` 指定的 Go 工具链（可由 Go 自动下载）；使用者运行预编译包时无需安装 Go。所有依赖固定在 `go.mod` / `go.sum` 中：
+
+```bash
+git clone https://github.com/zyc945/zKeys.git
+cd zKeys
+CGO_ENABLED=0 go build -trimpath -o zkey ./cmd/zkey
+CGO_ENABLED=0 go build -trimpath -o zwork ./cmd/zwork
+```
+
+然后按上面的安装步骤安装。发布四个平台的包：
+
+```bash
+./scripts/build-release.sh v0.2.0
+```
+
+产物位于 `dist/v0.2.0/`，包含四个压缩包和 `SHA256SUMS`；已存在的发布目录会被拒绝覆盖。Linux 产物关闭 CGO，不依赖目标设备的 glibc 或 OpenSSL；macOS 仍使用操作系统提供的系统库。构建脚本不会发布或部署。
 
 ## 使用
 
-个人加密密钥库。依赖安装步骤选定的 Python 3 和 `cryptography`。默认数据目录为 `~/.config/z-keystore`，密钥名称和值一起加密保存到 `vault.json`。目录权限 700，数据和锁文件 600。使用 Scrypt（N=32768、r=8、p=1）派生 AES-256-GCM 密钥，每次保存生成新 salt 和 nonce，写入使用文件锁与原子替换。
+个人加密密钥库。运行 Go 二进制无需额外语言运行时或加密依赖。默认数据目录为 `~/.config/z-keystore`，密钥名称和值一起加密保存到 `vault.json`。目录权限 700，数据和锁文件 600。使用 Scrypt（N=32768、r=8、p=1）派生 AES-256-GCM 密钥，每次保存生成新 salt 和 nonce，写入使用文件锁与原子替换。
 
 首次使用，请你本人在交互终端运行，设置主密码，无硬性长度限制，建议使用较长的随机口令。主密码不回显，不接受命令参数或环境变量。忘记主密码无法恢复。
 
@@ -141,7 +134,7 @@ api_key = os.environ['OPENAI_API_KEY']
 
 Agent 优先使用 `run` 启动需要密钥的代码。请在你自己控制的终端输入主密码，不要把主密码发送到 Agent 对话。不要让 Agent 调用 `get` 并把输出带入工具记录或日志。无交互终端时，工具拒绝读取主密码，不降级为明文输入。程序若主动打印环境变量或密钥，工具无法阻止泄露。
 
-此工具用于保护静态密钥，不能保证对 root、具有 Docker 管理权限的用户或同账号恶意进程保密。解锁后目标程序能够读取、复制获授权的密钥，子进程也可能继承；程序退出不等于凭证被撤销。Python 不保证秘密内存安全擦除；工具将 core 文件大小上限设为 0（目标程序继承此限制），但不能保证系统级崩溃收集器不采集内存，也无法控制 swap、休眠、管理员调试或所有程序日志。
+此工具用于保护静态密钥，不能保证对 root、具有 Docker 管理权限的用户或同账号恶意进程保密。解锁后目标程序能够读取、复制获授权的密钥，子进程也可能继承；程序退出不等于凭证被撤销。Go 不保证所有秘密内存副本被安全擦除；工具将 core 文件大小上限设为 0（目标程序继承此限制），但不能保证系统级崩溃收集器不采集内存，也无法控制 swap、休眠、管理员调试或所有程序日志。
 
 文本形式的 SSH 私钥可通过 `set --stdin` 保存，但工具不提供 SSH agent，也不会自动配置 SSH 登录。当前值是文本，不支持任意二进制文件或包含 NUL 字符的内容。
 
@@ -260,16 +253,33 @@ zkey list
 
 指定一台设备作为主要修改端，其他设备按需复制最新密文。两个设备各自执行 `set` 或 `passwd` 会产生独立版本；工具不自动同步或合并，复制整个文件会替换全部内容。不要把它当成多人或多端并发编辑的数据库。
 
-## 测试
+## 验证与 Python 兼容性
 
-在仓库根目录运行（需要 cryptography；macOS 将 `/usr/bin/python3` 替换为 `"$HOME/.config/z-keystore/.venv/bin/python3"`）：
+Python 源码 `z_keystore.py`、`zwork.py` 保留为格式参照和回退入口，不参与 Go 版运行。Python 版仍需 `requirements.txt` 中的依赖；回退时可用已安装该依赖的解释器显式运行旧脚本。两种实现均可直接读写 v1 文件，改密码后另一实现使用新密码即可。
+
+运行 Go 单元测试和静态检查：
 
 ```bash
-/usr/bin/python3 -m unittest discover -s tests -v
+go test ./...
+go vet ./...
 ```
 
-测试只使用临时目录、虚拟口令和虚拟密钥，不读取个人密钥库，不访问云服务，不修改现有 Zellij 会话。
+运行原有 Python 测试及 Go/Python 真实进程兼容测试（测试解释器需要 cryptography；ZKEY_GO 指向当前机器的 Go 可执行文件）：
 
-兼容性验证环境：macOS 的 Python 3.9.6 / 3.9.13、cryptography 50.0.2，以及 Linux 的 Python 3.10.12、cryptography 3.4.8；两端均通过 26 项测试。macOS Zellij 0.45.0 已验证交互解锁和新 pane 的密钥继承，Linux 原有验证版本为 0.45.1。这些是已验证组合，不代表要求固定到这些旧 Python 版本。
+```bash
+CGO_ENABLED=0 go build -o /tmp/zkey-compat ./cmd/zkey
+ZKEY_GO=/tmp/zkey-compat python3 -m unittest discover -s tests -v
+```
 
-仓库仅保存源码、说明和测试。不要提交 `vault.json`、主密码、实际密钥或含密钥的环境文件；`.zkey.json` 中只写密钥名称。
+可选的真实 Zellij 会话测试（只创建和清理唯一命名的测试会话）：
+
+```bash
+CGO_ENABLED=0 go build -o /tmp/zwork-compat ./cmd/zwork
+ZKEY_GO=/tmp/zkey-compat ZWORK_GO=/tmp/zwork-compat ZELLIJ_BIN="$HOME/.local/bin/zellij" python3 -m unittest discover -s tests -p test_zellij.py -v
+```
+
+测试只使用临时 HOME、虚拟口令和虚拟密钥。跨语言用例覆盖双向创建/读取、改写/改密码、多行与中文、空/短口令、错误密码/篡改、权限/链接、无终端拒绝、Ctrl-C 回显恢复，以及 run 的 PID/退出码/PATH/锁释放。测试环境必须允许创建伪终端并打开 `/dev/tty`；不设置 `ZKEY_GO` 时跳过跨语言测试。
+
+发布验证边界：`darwin-arm64` 与 `linux-amd64` 实际运行测试及双向文件互通；`darwin-amd64` 与 `linux-arm64` 交叉编译并检查产物，未在对应硬件运行。Zellij 实际会话验证使用 macOS 0.45.0、Linux 0.45.1。二进制依赖的最低系统版本以构建所用 Go 工具链支持范围为准。
+
+仓库仅保存源码、说明和测试，二进制通过 Release 分发。不要提交 `vault.json`、主密码、实际密钥或含密钥的环境文件；`.zkey.json` 中只写密钥名称。
