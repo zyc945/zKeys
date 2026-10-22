@@ -8,3 +8,8 @@ vault.json
 .vault-*
 .env
 .env.*
+
+# Go build outputs
+/dist/
+/zkey
+/zwork
