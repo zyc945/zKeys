@@ -21,6 +21,7 @@ import (
 
 type options struct {
 	action, name string
+	ssh          *sshOptions
 	names        []string
 	stdin        bool
 	bindings     map[string]string
@@ -31,6 +32,7 @@ type usageError string
 func (e usageError) Error() string { return string(e) }
 func help() {
 	fmt.Println("用法: zkey {init,set NAME [--stdin],import-env NAME...,get NAME,list,passwd,run --env ENV=NAME ... -- COMMAND ...}\n主密码仅从交互终端读取；get 会原样输出密钥，请避免日志记录。")
+	fmt.Println("SSH: zkey ssh import NAME --host HOST [--host HOST...] [--config PATH]\n     zkey ssh export NAME [--with-private-keys] [--install-config]")
 }
 func parse(args []string) (options, error) {
 	var o options
@@ -40,6 +42,10 @@ func parse(args []string) (options, error) {
 	o.action = args[0]
 	args = args[1:]
 	switch o.action {
+	case "ssh":
+		var err error
+		o.ssh, err = parseSSH(args)
+		return o, err
 	case "init", "list", "passwd":
 		if len(args) != 0 {
 			return o, usageError("该命令不接受其他参数。")
@@ -195,6 +201,9 @@ func newPassword() ([]byte, error) {
 	return a, nil
 }
 func operate(o options, s keystore.Store) ([]string, error) {
+	if o.action == "ssh" {
+		return nil, operateSSH(*o.ssh, s)
+	}
 	var imported map[string]string
 	if o.action == "import-env" {
 		imported = make(map[string]string, len(o.names))
