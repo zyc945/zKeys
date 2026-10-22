@@ -21,6 +21,7 @@ import (
 
 type options struct {
 	action, name string
+	names        []string
 	stdin        bool
 	bindings     map[string]string
 	command      []string
@@ -29,7 +30,7 @@ type usageError string
 
 func (e usageError) Error() string { return string(e) }
 func help() {
-	fmt.Println("用法: zkey {init,set NAME [--stdin],get NAME,list,passwd,run --env ENV=NAME ... -- COMMAND ...}\n主密码仅从交互终端读取；get 会原样输出密钥，请避免日志记录。")
+	fmt.Println("用法: zkey {init,set NAME [--stdin],import-env NAME...,get NAME,list,passwd,run --env ENV=NAME ... -- COMMAND ...}\n主密码仅从交互终端读取；get 会原样输出密钥，请避免日志记录。")
 }
 func parse(args []string) (options, error) {
 	var o options
@@ -59,6 +60,21 @@ func parse(args []string) (options, error) {
 		if err := keystore.CheckName(o.name); err != nil {
 			return o, err
 		}
+	case "import-env":
+		if len(args) == 0 {
+			return o, usageError("import-env 需要至少一个环境变量名称。")
+		}
+		seen := map[string]bool{}
+		for _, name := range args {
+			if !keystore.EnvName.MatchString(name) || seen[name] {
+				return o, usageError("环境变量名称无效或重复。")
+			}
+			if err := keystore.CheckName(name); err != nil {
+				return o, err
+			}
+			seen[name] = true
+		}
+		o.names = args
 	case "run":
 		o.bindings = map[string]string{}
 		for len(args) > 0 {
@@ -179,6 +195,17 @@ func newPassword() ([]byte, error) {
 	return a, nil
 }
 func operate(o options, s keystore.Store) ([]string, error) {
+	var imported map[string]string
+	if o.action == "import-env" {
+		imported = make(map[string]string, len(o.names))
+		for _, name := range o.names {
+			value, present := os.LookupEnv(name)
+			if !present || value == "" || !utf8.ValidString(value) || strings.IndexByte(value, 0) >= 0 {
+				return nil, keystore.Error("环境变量 " + name + " 未 export、为空或不是有效 UTF-8 文本（不可包含 NUL）。")
+			}
+			imported[name] = value
+		}
+	}
 	lock, err := s.Lock()
 	if err != nil {
 		return nil, err
@@ -213,6 +240,14 @@ func operate(o options, s keystore.Store) ([]string, error) {
 		return nil, err
 	}
 	switch o.action {
+	case "import-env":
+		for name, value := range imported {
+			values[name] = value
+		}
+		if err = s.Write(values, pw); err != nil {
+			return nil, err
+		}
+		fmt.Fprintf(os.Stderr, "已保存 %d 个环境变量。\n", len(imported))
 	case "set":
 		var value []byte
 		if o.stdin {
