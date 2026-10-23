@@ -127,6 +127,9 @@ class ZellijIntegrationTests(unittest.TestCase):
             if condition():
                 return
             if self.poll(client) is not None:
+                # The child can exit between the condition and poll calls.
+                if condition():
+                    return
                 self.fail('zwork exited before ' + description + ': '
                           + client[2].decode('utf-8', 'replace')[-3000:])
         self.fail('timed out waiting for ' + description + ': '
