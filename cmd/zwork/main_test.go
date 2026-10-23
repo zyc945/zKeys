@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/zyc945/zKeys/internal/buildinfo"
 )
 
 func TestZworkProcess(t *testing.T) {
@@ -232,15 +234,28 @@ func TestMissingConfigAndTools(t *testing.T) {
 		t.Fatal(err)
 	}
 	status, _, output = f.call(t, f.root, "work", "KEY")
-	if status != 1 || !strings.Contains(output, "无法启动工具") {
+	if status != 1 || !strings.Contains(output, "无法启动工具 zkey") || !strings.Contains(output, "zwork 实际目录旁") || !strings.Contains(output, "~/.local/bin/zkey") {
 		t.Fatalf("missing zkey: status %d, output %s", status, output)
 	}
 	if err := os.Remove(filepath.Join(f.bindir, "zellij")); err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("PATH", f.root)
 	status, _, output = f.call(t, f.root, "work", "KEY")
-	if status != 1 || !strings.Contains(output, "无法启动工具") {
+	if status != 1 || !strings.Contains(output, "无法启动工具 Zellij") || !strings.Contains(output, "~/.local/bin/zellij") || !strings.Contains(output, "PATH") {
 		t.Fatalf("missing zellij: status %d, output %s", status, output)
+	}
+}
+
+func TestAttachDoesNotNeedZkey(t *testing.T) {
+	f := newFixture(t)
+	f.listing = "work [Created 1m ago]\n"
+	if err := os.Remove(filepath.Join(f.bindir, "zkey")); err != nil {
+		t.Fatal(err)
+	}
+	status, received, output := f.call(t, f.root, "work")
+	if status != 0 || !reflect.DeepEqual(received, []string{"attach", "work"}) {
+		t.Fatalf("status %d, received %#v, output %s", status, received, output)
 	}
 }
 
@@ -248,5 +263,17 @@ func TestHelp(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if status := run([]string{"--help"}, &stdout, &stderr); status != 0 || !strings.Contains(stdout.String(), usage) || stderr.Len() != 0 {
 		t.Fatalf("status %d, stdout %q, stderr %q", status, stdout.String(), stderr.String())
+	}
+}
+
+func TestVersion(t *testing.T) {
+	t.Setenv("HOME", filepath.Join(t.TempDir(), "missing"))
+	var stdout, stderr bytes.Buffer
+	if status := run([]string{"--version"}, &stdout, &stderr); status != 0 || stdout.String() != "zwork "+buildinfo.Version+"\n" || stderr.Len() != 0 {
+		t.Fatalf("status %d, stdout %q, stderr %q", status, stdout.String(), stderr.String())
+	}
+	stdout.Reset()
+	if status := run([]string{"--version", "extra"}, &stdout, &stderr); status != 2 || stdout.Len() != 0 {
+		t.Fatalf("version accepted extra argument: status %d, stdout %q", status, stdout.String())
 	}
 }

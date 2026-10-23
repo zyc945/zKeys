@@ -1,0 +1,87 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Native tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Record native platform
+        shell: bash
+        run: |
+          echo 'Native platform evidence:' >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          uname -s -m >> "$GITHUB_STEP_SUMMARY"
+          go env GOOS GOARCH >> "$GITHUB_STEP_SUMMARY"
+          go version >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+      - name: Install Python format reference dependency
+        run: python -m pip install cryptography==50.0.2
+      - name: Prepare Linux SSH fixture dependency
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openssh-server
+          sudo mkdir -p /run/sshd
+      - name: Check integration dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x /usr/sbin/sshd
+          command -v ssh
+          command -v ssh-keygen
+          echo 'ZKEY_SSHD=/usr/sbin/sshd' >> "$GITHUB_ENV"
+          echo 'SSH tests: required; isolated loopback sshd with generated test keys.' >> "$GITHUB_STEP_SUMMARY"
+          if command -v zellij >/dev/null 2>&1; then
+            echo "ZELLIJ_BIN=$(command -v zellij)" >> "$GITHUB_ENV"
+            echo 'Zellij tests: enabled (installed runner binary).' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Zellij tests: SKIPPED; runner has no Zellij. Install Zellij and set ZELLIJ_BIN to run locally.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Go tests with race detector
+        run: go test -race ./...
+      - name: Go static checks
+        run: go vet ./...
+      - name: Build native commands
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/zkeys-bin"
+          go build -o "$RUNNER_TEMP/zkeys-bin/zkey" ./cmd/zkey
+          go build -o "$RUNNER_TEMP/zkeys-bin/zwork" ./cmd/zwork
+          echo "ZKEY_GO=$RUNNER_TEMP/zkeys-bin/zkey" >> "$GITHUB_ENV"
+          echo "ZWORK_GO=$RUNNER_TEMP/zkeys-bin/zwork" >> "$GITHUB_ENV"
+      - name: Python reference and native Go interoperability tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tests -v 2>&1 | tee "$RUNNER_TEMP/python-tests.log"
+      - name: Record actual test results and skips
+        if: always()
+        shell: bash
+        run: |
+          if test -f "$RUNNER_TEMP/python-tests.log"; then
+            echo 'Python/native Go test summary (skips are not passes):' >> "$GITHUB_STEP_SUMMARY"
+            echo '```text' >> "$GITHUB_STEP_SUMMARY"
+            tail -n 8 "$RUNNER_TEMP/python-tests.log" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo 'This job runs native binaries on the named runner; it does not claim validation of other cross-compiled architectures.' >> "$GITHUB_STEP_SUMMARY"

@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"unicode/utf8"
 
+	"github.com/zyc945/zKeys/internal/buildinfo"
 	"github.com/zyc945/zKeys/internal/keystore"
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
@@ -31,7 +32,7 @@ type usageError string
 
 func (e usageError) Error() string { return string(e) }
 func help() {
-	fmt.Println("用法: zkey {init,set NAME [--stdin],import-env NAME...,get NAME,list,passwd,run --env ENV=NAME ... -- COMMAND ...}\n主密码仅从交互终端读取；get 会原样输出密钥，请避免日志记录。")
+	fmt.Println("用法: zkey {init,set NAME [--stdin],import-env NAME...,get NAME,delete NAME,list,passwd,run --env ENV=NAME ... -- COMMAND ...}\n      zkey --version\n主密码仅从交互终端读取；get 会原样输出密钥，请避免日志记录。")
 	fmt.Println("SSH: zkey ssh import NAME --host HOST [--host HOST...] [--config PATH]\n     zkey ssh export NAME [--with-private-keys] [--install-config]")
 }
 func parse(args []string) (options, error) {
@@ -50,7 +51,7 @@ func parse(args []string) (options, error) {
 		if len(args) != 0 {
 			return o, usageError("该命令不接受其他参数。")
 		}
-	case "set", "get":
+	case "set", "get", "delete":
 		for _, a := range args {
 			if a == "--stdin" && o.action == "set" {
 				o.stdin = true
@@ -283,6 +284,24 @@ func operate(o options, s keystore.Store) ([]string, error) {
 		}
 		_, err = fmt.Fprint(os.Stdout, v)
 		return nil, err
+	case "delete":
+		if _, ok := values[o.name]; !ok {
+			return nil, keystore.Error("密钥不存在。")
+		}
+		answer, err := hidden(fmt.Sprintf("确认删除条目 %q？[y/N]（不回显）: ", o.name))
+		defer clear(answer)
+		if err != nil {
+			return nil, err
+		}
+		if !strings.EqualFold(string(answer), "y") && !strings.EqualFold(string(answer), "yes") {
+			fmt.Fprintln(os.Stderr, "已取消删除。")
+			return nil, nil
+		}
+		delete(values, o.name)
+		if err = s.Write(values, pw); err != nil {
+			return nil, err
+		}
+		fmt.Fprintln(os.Stderr, "条目已删除。")
 	case "list":
 		names := make([]string, 0, len(values))
 		for k := range values {
@@ -381,6 +400,13 @@ func wantsHelp(args []string) bool {
 	return false
 }
 func run(args []string) error {
+	if len(args) > 0 && args[0] == "--version" {
+		if len(args) != 1 {
+			return usageError("--version 不接受其他参数。")
+		}
+		fmt.Println("zkey " + buildinfo.Version)
+		return nil
+	}
 	if wantsHelp(args) {
 		help()
 		return nil

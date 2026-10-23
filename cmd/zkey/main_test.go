@@ -21,6 +21,20 @@ func TestParseImportEnv(t *testing.T) {
 	}
 }
 
+func TestParseDelete(t *testing.T) {
+	for _, name := range []string{"work/key", "ssh/work"} {
+		o, err := parse([]string{"delete", name})
+		if err != nil || o.action != "delete" || o.name != name {
+			t.Fatal(o, err)
+		}
+	}
+	for _, args := range [][]string{{"delete"}, {"delete", "key", "other"}, {"delete", "key", "--stdin"}, {"delete", "key", "--force"}, {"delete", "bad name"}, {"--version", "extra"}} {
+		if _, err := parse(args); err == nil {
+			t.Fatalf("accepted %q", args)
+		}
+	}
+}
+
 func TestImportEnvRejectsInvalidValuesBeforeLock(t *testing.T) {
 	for name, value := range map[string]string{"empty": "", "invalid-utf8": "fake-invalid-\xff-value"} {
 		t.Run(name, func(t *testing.T) {

@@ -58,7 +58,7 @@ class GoCompatibilityTests(unittest.TestCase):
                 store.write(entries, password)
 
     def interactive(self, command, args, passwords=(), stdin=None, home=None,
-                    interrupt=False, immediate=False, environment=None):
+                    interrupt=False, immediate=False, environment=None, secret_answers=None):
         master, slave = pty.openpty()
         fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 100, 0, 0))
 
@@ -122,7 +122,7 @@ class GoCompatibilityTests(unittest.TestCase):
             result.terminal = bytes(output['terminal'])
             result.pid = process.pid
             result.echo = bool(termios.tcgetattr(master)[3] & termios.ECHO)
-            for password in passwords:
+            for password in passwords if secret_answers is None else secret_answers:
                 if password:
                     self.assertNotIn(password.encode('utf-8'), result.terminal)
                     self.assertNotIn(password.encode('utf-8'), result.stderr)
