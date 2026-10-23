@@ -120,4 +120,4 @@ zwork dev-agent
 
 Go 是唯一新增功能实现；Python 源码继续保留为 v1 格式参照和兼容验证入口，不追求功能同步。仓库仅保存源码、说明和虚拟测试数据，二进制通过 [Releases](https://github.com/zyc945/zKeys/releases) 分发。不要提交 `vault.json`、主密码、实际密钥或含密钥的环境文件；`.zkey.json` 中只写密钥名称。
 
-安全边界与漏洞反馈方式见 [SECURITY.md](SECURITY.md)；二进制依赖的许可通知见[第三方许可证](docs/third-party-notices.md)。项目自身 LICENSE 尚待选择，仓库公开不自动等于获得开源使用授权。
+安全边界与漏洞反馈方式见 [SECURITY.md](SECURITY.md)；二进制依赖的许可通知见[第三方许可证](docs/third-party-notices.md)。本项目自有代码采用 [MIT License](LICENSE)，版权署名为 `zyc945`；该授权也适用于已发布的 v0.2.0–v0.5.0。第三方组件继续遵循其各自许可。

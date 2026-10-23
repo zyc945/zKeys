@@ -14,9 +14,9 @@ for platform in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
     for command in zkey zwork; do
         CGO_ENABLED=0 GOOS="$target_os" GOARCH="$target_arch" go build -trimpath -ldflags="-s -w -X github.com/zyc945/zKeys/internal/buildinfo.Version=$version" -o "$stage/$command" "./cmd/$command"
     done
-    cp README.md SECURITY.md "$stage/"
+    cp README.md SECURITY.md LICENSE "$stage/"
     cp -R docs "$stage/docs"
-    COPYFILE_DISABLE=1 tar -czf "$out/zkeys-$version-$target_os-$target_arch.tar.gz" -C "$stage" zkey zwork README.md SECURITY.md docs
+    COPYFILE_DISABLE=1 tar -czf "$out/zkeys-$version-$target_os-$target_arch.tar.gz" -C "$stage" zkey zwork README.md SECURITY.md LICENSE docs
     rm -rf "$stage"
     trap - EXIT HUP INT TERM
 done
