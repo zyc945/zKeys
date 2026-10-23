@@ -119,3 +119,5 @@ zwork dev-agent
 - [文件格式与兼容约定](docs/format.md)：算法参数、恢复所需信息和 Python 参考实现边界。
 
 Go 是唯一新增功能实现；Python 源码继续保留为 v1 格式参照和兼容验证入口，不追求功能同步。仓库仅保存源码、说明和虚拟测试数据，二进制通过 [Releases](https://github.com/zyc945/zKeys/releases) 分发。不要提交 `vault.json`、主密码、实际密钥或含密钥的环境文件；`.zkey.json` 中只写密钥名称。
+
+安全边界与漏洞反馈方式见 [SECURITY.md](SECURITY.md)；二进制依赖的许可通知见[第三方许可证](docs/third-party-notices.md)。项目自身 LICENSE 尚待选择，仓库公开不自动等于获得开源使用授权。
