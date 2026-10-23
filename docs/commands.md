@@ -2,7 +2,7 @@
 
 [返回 README](../README.md) · [备份与迁移](migration.md) · [文件格式](format.md)
 
-本文描述当前源码。`delete`、`--version` 尚未发布，需要从源码构建；v0.4.0 Release 仍支持其余既有命令。
+本文描述 v0.5.0。`delete`、`--version` 和改进的 zwork 路径查找自此版本提供。
 
 个人加密密钥库。运行 Go 二进制无需额外语言运行时或加密依赖。默认数据目录为 `~/.config/z-keystore`，密钥名称和值一起加密保存到 `vault.json`。目录权限 700，数据和锁文件 600。使用 Scrypt（N=32768、r=8、p=1）派生 AES-256-GCM 密钥，每次保存生成新 salt 和 nonce，写入使用文件锁与原子替换。
 
@@ -176,7 +176,7 @@ zwork other OPENAI_API_KEY SERVICE_TOKEN=work/token
 
 ### 可执行文件查找与信任范围
 
-以下查找行为属于当前源码；已发布 v0.4.0 固定使用 `~/.local/bin/zkey` 和 `~/.local/bin/zellij`。
+以下查找行为适用于 v0.5.0；旧版 v0.4.0 固定使用 `~/.local/bin/zkey` 和 `~/.local/bin/zellij`。
 
 - `zkey`：先解析实际 `zwork` 可执行文件的符号链接，优先使用其所在目录的 `zkey`；只有该项不存在时才兼容回退到 `~/.local/bin/zkey`。因此将两个二进制放在同一目录即可使用，不从 PATH 随意选择 `zkey`。
 - Zellij：优先使用旧位置 `~/.local/bin/zellij`；只有该项不存在时才从 PATH 查找。保留已有安装和链接的优先级，也支持 Homebrew 或系统包管理器直接安装。
