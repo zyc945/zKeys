@@ -8,7 +8,11 @@ zKeys 是个人维护的本地密钥库工具，尚未经过独立安全审计�
 
 仓库当前保持私有。已有协作者可以通过既有私密渠道联系维护者；如没有已知渠道，可先创建一个**不含漏洞细节**的 Issue，请维护者提供私密报告方式。
 
-GitHub 私密漏洞报告仅适用于公开仓库，当前私有阶段不能启用该入口。公开计划应先确定可用的私密联系渠道；如果另行授权将仓库设为公开，应随后启用并验证 GitHub 私密漏洞报告，再更新本策略。启用后，请在仓库 **Security → Advisories → Report a vulnerability** 中报告，确认进入的是私密报告表单。该入口尚未可用时，不要把漏洞细节改发到公开 Issue。
+公开后的私密反馈方案采用 GitHub Private Vulnerability Reporting，不另设未经确认的邮箱。该功能仅支持公开仓库，当前尚未启用，也未验证接收流程。只有在维护者另行授权公开后，才能在 Settings → Security → Advanced Security 中启用 Private vulnerability reporting，并用独立账号提交不含真实密钥的测试报告，确认维护者收到、非参与者不可见，再更新本策略为已启用。
+
+启用并验证后，请通过仓库 **Security → Advisories → Report a vulnerability**（https://github.com/zyc945/zKeys/security/advisories/new）报告。入口未启用、无法确认其私密性或出现错误时，不要把漏洞细节改发到 Issue。当前私有仓库的 Issue 也不作为长期私密渠道：仓库将来公开时，这些 Issue 可能随之公开；只可用于不含漏洞细节的联系请求。没有已确认私密渠道时，先保留细节，等待维护者提供渠道。
+
+配置依据：[GitHub 私密漏洞报告文档](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/configure-vulnerability-reporting/configure-for-a-repository)。
 
 报告尽量包含：
 
