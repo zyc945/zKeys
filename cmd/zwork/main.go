@@ -14,6 +14,8 @@ import (
 	"strings"
 	"syscall"
 	"unicode/utf8"
+
+	"github.com/zyc945/zKeys/internal/buildinfo"
 )
 
 var (
@@ -156,9 +158,13 @@ func projectKeys(stderr io.Writer) ([]string, error) {
 	return bindings, nil
 }
 
-const usage = "usage: zwork [-h] session [KEY ...]"
+const usage = "usage: zwork [-h] session [KEY ...]\n       zwork --version"
 
 func run(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 1 && args[0] == "--version" {
+		fmt.Fprintln(stdout, "zwork "+buildinfo.Version)
+		return 0
+	}
 	fail := func(message string) int {
 		fmt.Fprintln(stderr, usage)
 		fmt.Fprintln(stderr, "zwork: error: "+message)
@@ -192,15 +198,18 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return fail(err.Error())
 	}
 	toolError := func() int {
-		fmt.Fprintln(stderr, "zwork: 无法启动工具，请检查 ~/.local/bin/zkey 和 zellij。")
+		fmt.Fprintln(stderr, "zwork: 无法启动工具，请检查 zkey 和 Zellij 的安装路径及执行权限。")
 		return 1
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return toolError()
 	}
-	bindir := filepath.Join(home, ".local", "bin")
-	zellij := filepath.Join(bindir, "zellij")
+	zellij, err := findZellij(home)
+	if err != nil {
+		fmt.Fprintln(stderr, "zwork: 无法启动工具 Zellij：优先检查 ~/.local/bin/zellij，仅不存在时从 PATH 查找；文件须可执行。")
+		return 1
+	}
 	command := exec.Command(zellij, "list-sessions", "--no-formatting")
 	var listing, listingError bytes.Buffer
 	command.Stdout, command.Stderr = &listing, &listingError
@@ -232,6 +241,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return toolError()
 		}
 	} else {
+		executable, err := os.Executable()
+		if err != nil {
+			return toolError()
+		}
+		zkey, err := findZkey(executable, home)
+		if err != nil {
+			fmt.Fprintln(stderr, "zwork: 无法启动工具 zkey：优先检查 zwork 实际目录旁的 zkey，仅不存在时使用 ~/.local/bin/zkey；文件须可执行。")
+			return 1
+		}
 		if len(bindings) == 0 {
 			bindings, err = projectKeys(stderr)
 			if errors.Is(err, errStartTool) {
@@ -241,7 +259,6 @@ func run(args []string, stdout, stderr io.Writer) int {
 				return fail(err.Error())
 			}
 		}
-		zkey := filepath.Join(bindir, "zkey")
 		argv := append([]string{zkey, "run"}, bindings...)
 		argv = append(argv, "--", zellij, "--session", session)
 		if err := syscall.Exec(zkey, argv, os.Environ()); err != nil {
