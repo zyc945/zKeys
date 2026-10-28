@@ -101,6 +101,9 @@ func (s Store) Read(password []byte) (map[string]string, error) {
 		return nil, err
 	}
 	defer f.Close()
+	return read(f, password)
+}
+func read(f io.Reader, password []byte) (map[string]string, error) {
 	data, err := io.ReadAll(f)
 	if err != nil {
 		return nil, err
@@ -270,4 +273,44 @@ func Export(path string, values map[string]string, password []byte) error {
 	}
 	defer dir.Close()
 	return dir.Sync()
+}
+
+// Import merges a read-only v1 file into an unlocked target. The caller must
+// hold the target lock and pass the values read under that lock.
+func (s Store) Import(path string, values map[string]string, password, incomingPassword []byte) (int, error) {
+	f, err := openPrivate(path, unix.O_RDONLY)
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+	source, err := f.Stat()
+	if err != nil {
+		return 0, err
+	}
+	target, err := os.Stat(s.Path())
+	if err != nil {
+		return 0, err
+	}
+	if os.SameFile(source, target) {
+		return 0, Error("不可将目标密钥库自身作为导入文件。")
+	}
+	incoming, err := read(f, incomingPassword)
+	if err != nil {
+		return 0, err
+	}
+	for name := range incoming {
+		if _, exists := values[name]; exists {
+			return 0, Error("存在同名条目，整次导入已取消。")
+		}
+	}
+	if len(incoming) == 0 {
+		return 0, nil
+	}
+	for name, value := range incoming {
+		values[name] = value
+	}
+	if err := s.Write(values, password); err != nil {
+		return 0, err
+	}
+	return len(incoming), nil
 }

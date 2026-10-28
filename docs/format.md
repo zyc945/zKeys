@@ -52,7 +52,7 @@ SSH 解码拒绝未知或重复字段，并校验选项、文件引用、类型�
 
 恢复需要完整的 `vault.json`、该文件对应的主密码，以及支持 v1 的工具。算法参数与 AAD 固定在实现中，没有另存进文件；建议同时记录 `zkey --version`、`zwork --version`，需要长期独立恢复时另存对应版本源码或发布包。SSH 私钥原有的独立口令也应自行保管。恢复操作见[迁移文档](migration.md)。
 
-Go 是唯一新增功能实现。`z_keystore.py` 和 `zwork.py` 保留为格式参照与兼容验证入口，不追求命令功能同步，不在本轮删除已有参考代码或测试。Python 需要 `requirements.txt` 中的依赖；不参与 Go 二进制运行，也不支持新增的 `import-env`、`export`、`ssh`、`delete` 和 `--version`。
+Go 是唯一新增功能实现。`z_keystore.py` 和 `zwork.py` 保留为格式参照与兼容验证入口，不追求命令功能同步，不在本轮删除已有参考代码或测试。Python 需要 `requirements.txt` 中的依赖；不参与 Go 二进制运行，也不支持新增的 `import-env`、`export`、`import`、`ssh`、`delete` 和 `--version`。
 
 固定兼容向量位于源码仓库中的 `tests/fixtures/keystore-v1.json`，Go/Python 各自读取既有密文并核对预期条目，防止读写实现一起改变而掩盖格式破坏。向量仅含公开虚拟数据，固定 salt/nonce 不用于真实库。
 

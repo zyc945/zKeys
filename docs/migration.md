@@ -6,7 +6,7 @@
 
 只需备份完整的 `~/.config/z-keystore/vault.json`；它包含加密的名称和值，以及解密所需的版本、salt 和 nonce。加密算法参数由兼容版本的工具定义，建议同时记录源码版本（在源码目录运行 `git rev-parse HEAD`）。主密码单独保管，不放进备份目录。
 
-先等待所有 `zkey` 命令结束，备份期间不要执行 `init`、`set`、`import-env`、`ssh import`、`delete` 或 `passwd`。已启动的 Zellij 会话可以继续运行，它不需要持续读取密钥库。以下命令创建独立备份目录，不覆盖旧备份：
+先等待所有 `zkey` 命令结束，备份期间不要执行 `init`、`set`、`import-env`、`import`、`ssh import`、`delete` 或 `passwd`。已启动的 Zellij 会话可以继续运行，它不需要持续读取密钥库。以下命令创建独立备份目录，不覆盖旧备份：
 
 ```bash
 (
@@ -29,6 +29,8 @@
 当前每个用户使用固定路径 `~/.config/z-keystore/vault.json`，没有多库切换功能。复制 vault 文件迁移的是加密数据，不是运行中的会话。SSH 连接配置需在目标设备显式执行 `ssh export` 恢复；不修改远端服务器的 `authorized_keys`。
 
 macOS 和 Linux 使用相同的 v1 文件格式，不绑定用户名、UID 或设备。已用虚拟密钥验证 macOS 写入 → Linux 解锁并重新保存 → macOS 解锁，包含中文口令和多行文本；无需转换密文。两端分别安装工具，只复制 `vault.json`。
+
+若目标机器已有库且希望保留原有条目，可使用源码新增的 [`zkey import PATH`](commands.md#合并导入条目) 合并（v0.6.0 发布二进制尚不支持）；遇到任何同名条目整次失败，不覆盖。下面的步骤用于安装整个库文件，不是合并导入。
 
 ### 1. 准备目标设备
 

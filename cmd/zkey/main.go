@@ -23,6 +23,7 @@ import (
 type options struct {
 	action, name string
 	out          string
+	in           string
 	ssh          *sshOptions
 	names        []string
 	stdin        bool
@@ -33,7 +34,7 @@ type usageError string
 
 func (e usageError) Error() string { return string(e) }
 func help() {
-	fmt.Println("用法: zkey {init,set NAME [--stdin],import-env NAME...,export NAME... --out PATH,get NAME,delete NAME,list,passwd,run --env ENV=NAME ... -- COMMAND ...}\n      zkey --version\n主密码仅从交互终端读取；get 会原样输出密钥，请避免日志记录。")
+	fmt.Println("用法: zkey {init,set NAME [--stdin],import-env NAME...,import PATH,export NAME... --out PATH,get NAME,delete NAME,list,passwd,run --env ENV=NAME ... -- COMMAND ...}\n      zkey --version\n主密码仅从交互终端读取；get 会原样输出密钥，请避免日志记录。")
 	fmt.Println("SSH: zkey ssh import NAME --host HOST [--host HOST...] [--config PATH]\n     zkey ssh export NAME [--with-private-keys] [--install-config]")
 }
 func parse(args []string) (options, error) {
@@ -68,6 +69,11 @@ func parse(args []string) (options, error) {
 		if err := keystore.CheckName(o.name); err != nil {
 			return o, err
 		}
+	case "import":
+		if len(args) != 1 || args[0] == "" || strings.HasPrefix(args[0], "-") {
+			return o, usageError("import 需要一个密钥库文件路径，不支持 stdin 或覆盖参数。")
+		}
+		o.in = args[0]
 	case "import-env":
 		if len(args) == 0 {
 			return o, usageError("import-env 需要至少一个环境变量名称。")
@@ -287,6 +293,17 @@ func operate(o options, s keystore.Store) ([]string, error) {
 		return nil, err
 	}
 	switch o.action {
+	case "import":
+		incomingPassword, err := hidden("导入文件主密码（不回显）: ")
+		if err != nil {
+			return nil, err
+		}
+		defer clear(incomingPassword)
+		count, err := s.Import(o.in, values, pw, incomingPassword)
+		if err != nil {
+			return nil, err
+		}
+		fmt.Fprintf(os.Stderr, "已导入 %d 个条目；目标密钥库主密码保持不变。\n", count)
 	case "export":
 		selected := make(map[string]string, len(o.names))
 		for _, name := range o.names {

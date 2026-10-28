@@ -101,3 +101,20 @@ func TestParseExport(t *testing.T) {
 		}
 	}
 }
+
+func TestParseImport(t *testing.T) {
+	for _, path := range []string{"./project.json", "/tmp/project.json", "./a file.json", "./-file"} {
+		o, err := parse([]string{"import", path})
+		if err != nil || o.action != "import" || o.in != path {
+			t.Fatal(o, err)
+		}
+	}
+	for _, args := range [][]string{
+		{"import"}, {"import", ""}, {"import", "-"}, {"import", "--stdin"},
+		{"import", "one", "two"}, {"import", "one", "--force"}, {"import", "--overwrite", "one"},
+	} {
+		if _, err := parse(args); err == nil {
+			t.Fatalf("accepted %q", args)
+		}
+	}
+}
