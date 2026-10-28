@@ -2,7 +2,7 @@
 
 [返回 README](../README.md) · [备份与迁移](migration.md) · [文件格式](format.md)
 
-本文描述 v0.5.0 及当前源码新增的 `export`（尚未发布，需从源码构建）。`delete`、`--version` 和改进的 zwork 路径查找自此版本提供。
+本文描述 v0.6.0。`export` 自 v0.6.0 提供；`delete`、`--version` 和改进的 zwork 路径查找自 v0.5.0 提供。
 
 个人加密密钥库。运行 Go 二进制无需额外语言运行时或加密依赖。默认数据目录为 `~/.config/z-keystore`，密钥名称和值一起加密保存到 `vault.json`。目录权限 700，数据和锁文件 600。使用 Scrypt（N=32768、r=8、p=1）派生 AES-256-GCM 密钥，每次保存生成新 salt 和 nonce，写入使用文件锁与原子替换。
 
@@ -25,7 +25,7 @@ zkey init
 | `zkey init` | 无参数；输入两次新主密码，已有库时拒绝覆盖 | `zkey init` |
 | `zkey set NAME [--stdin]` | `NAME` 为库中名称；默认隐藏输入值，`--stdin` 从标准输入读取完整文本；覆盖同名条目 | `zkey set work/token` |
 | `zkey import-env NAME...` | 至少一个已 export 的变量名，不可重复；保存为同名条目，不接受 `ENV=KEY` 映射或变量值 | `zkey import-env API_TOKEN SERVICE_TOKEN` |
-| `zkey export NAME... --out PATH` | 至少一个不重复的已存在名称；必填输出文件，父目录须存在，拒绝覆盖；原库保留，新库单独设置密码；源码新增 | `zkey export work/token ssh/work --out ./project-vault.json` |
+| `zkey export NAME... --out PATH` | 至少一个不重复的已存在名称；必填输出文件，父目录须存在，拒绝覆盖；原库保留，新库单独设置密码；v0.6.0 新增 | `zkey export work/token ssh/work --out ./project-vault.json` |
 | `zkey delete NAME` | 删除指定条目；显示名称并交互确认，不显示值，不提供强制删除参数 | `zkey delete work/token` |
 | `zkey get NAME` | 读取一个条目，将明文原样输出到 stdout，不追加换行 | `zkey get work/token` |
 | `zkey list` | 无参数；解锁后仅列出名称，按名称排序 | `zkey list` |
