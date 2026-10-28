@@ -150,21 +150,21 @@ func (s Store) Read(password []byte) (map[string]string, error) {
 	}
 	return result, nil
 }
-func (s Store) Write(values map[string]string, password []byte) error {
+func encrypt(values map[string]string, password []byte) ([]byte, error) {
 	salt, nonce := make([]byte, 16), make([]byte, 12)
 	if _, err := rand.Read(salt); err != nil {
-		return err
+		return nil, err
 	}
 	if _, err := rand.Read(nonce); err != nil {
-		return err
+		return nil, err
 	}
 	gcm, err := aead(password, salt)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	plain, err := json.Marshal(values)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer clear(plain)
 	ciphertext := gcm.Seal(nil, nonce, plain, []byte(aad))
@@ -174,6 +174,17 @@ func (s Store) Write(values map[string]string, password []byte) error {
 		Nonce      string `json:"nonce"`
 		Ciphertext string `json:"ciphertext"`
 	}{1, base64.StdEncoding.EncodeToString(salt), base64.StdEncoding.EncodeToString(nonce), base64.StdEncoding.EncodeToString(ciphertext)}
+	data, err := json.Marshal(envelope)
+	if err != nil {
+		return nil, err
+	}
+	return append(data, '\n'), nil
+}
+func (s Store) Write(values map[string]string, password []byte) error {
+	data, err := encrypt(values, password)
+	if err != nil {
+		return err
+	}
 	f, err := os.CreateTemp(s.Directory, ".vault-")
 	if err != nil {
 		return err
@@ -183,7 +194,7 @@ func (s Store) Write(values map[string]string, password []byte) error {
 	if err = f.Chmod(0600); err != nil {
 		return err
 	}
-	if err = json.NewEncoder(f).Encode(envelope); err != nil {
+	if _, err = f.Write(data); err != nil {
 		return err
 	}
 	if err = f.Sync(); err != nil {
@@ -211,4 +222,52 @@ func (s Store) Exists() (bool, error) {
 		return false, nil
 	}
 	return false, err
+}
+
+// Export creates a standalone v1 keystore without replacing an existing path.
+func Export(path string, values map[string]string, password []byte) error {
+	if _, err := os.Lstat(path); err == nil {
+		return Error("目标文件已经存在，拒绝覆盖。")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	data, err := encrypt(values, password)
+	if err != nil {
+		return err
+	}
+	directory := filepath.Dir(path)
+	f, err := os.CreateTemp(directory, ".vault-")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	defer f.Close()
+	if err = f.Chmod(0600); err != nil {
+		return err
+	}
+	if _, err = f.Write(data); err != nil {
+		return err
+	}
+	if err = f.Sync(); err != nil {
+		return err
+	}
+	if err = f.Close(); err != nil {
+		return err
+	}
+	// Linking a fully written ciphertext file publishes it atomically and
+	// refuses an existing destination, including one created after Lstat.
+	if err = os.Link(f.Name(), path); errors.Is(err, os.ErrExist) {
+		return Error("目标文件已经存在，拒绝覆盖。")
+	} else if err != nil {
+		return err
+	}
+	if err = os.Remove(f.Name()); err != nil {
+		return err
+	}
+	dir, err := os.Open(directory)
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.Sync()
 }

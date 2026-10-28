@@ -22,6 +22,7 @@ import (
 
 type options struct {
 	action, name string
+	out          string
 	ssh          *sshOptions
 	names        []string
 	stdin        bool
@@ -32,7 +33,7 @@ type usageError string
 
 func (e usageError) Error() string { return string(e) }
 func help() {
-	fmt.Println("用法: zkey {init,set NAME [--stdin],import-env NAME...,get NAME,delete NAME,list,passwd,run --env ENV=NAME ... -- COMMAND ...}\n      zkey --version\n主密码仅从交互终端读取；get 会原样输出密钥，请避免日志记录。")
+	fmt.Println("用法: zkey {init,set NAME [--stdin],import-env NAME...,export NAME... --out PATH,get NAME,delete NAME,list,passwd,run --env ENV=NAME ... -- COMMAND ...}\n      zkey --version\n主密码仅从交互终端读取；get 会原样输出密钥，请避免日志记录。")
 	fmt.Println("SSH: zkey ssh import NAME --host HOST [--host HOST...] [--config PATH]\n     zkey ssh export NAME [--with-private-keys] [--install-config]")
 }
 func parse(args []string) (options, error) {
@@ -82,6 +83,42 @@ func parse(args []string) (options, error) {
 			seen[name] = true
 		}
 		o.names = args
+	case "export":
+		seen := map[string]bool{}
+		outSet := false
+		for len(args) > 0 {
+			arg := args[0]
+			args = args[1:]
+			if arg == "--out" || strings.HasPrefix(arg, "--out=") {
+				if outSet {
+					return o, usageError("--out 只能指定一次。")
+				}
+				outSet = true
+				if arg == "--out" {
+					if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+						return o, usageError("--out 需要目标文件路径。")
+					}
+					o.out, args = args[0], args[1:]
+				} else {
+					o.out = strings.TrimPrefix(arg, "--out=")
+				}
+				if o.out == "" || o.out == "-" {
+					return o, usageError("--out 需要目标文件路径，不支持 stdout。")
+				}
+				continue
+			}
+			if err := keystore.CheckName(arg); err != nil {
+				return o, err
+			}
+			if seen[arg] {
+				return o, usageError("导出条目名称不可重复。")
+			}
+			seen[arg] = true
+			o.names = append(o.names, arg)
+		}
+		if len(o.names) == 0 || !outSet {
+			return o, usageError("export 需要至少一个条目名称及 --out PATH。")
+		}
 	case "run":
 		o.bindings = map[string]string{}
 		for len(args) > 0 {
@@ -250,6 +287,29 @@ func operate(o options, s keystore.Store) ([]string, error) {
 		return nil, err
 	}
 	switch o.action {
+	case "export":
+		selected := make(map[string]string, len(o.names))
+		for _, name := range o.names {
+			value, ok := values[name]
+			if !ok {
+				return nil, keystore.Error("请求导出的条目不存在。")
+			}
+			selected[name] = value
+		}
+		if _, err := os.Lstat(o.out); err == nil {
+			return nil, keystore.Error("目标文件已经存在，拒绝覆盖。")
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
+		next, err := newPassword()
+		if err != nil {
+			return nil, err
+		}
+		defer clear(next)
+		if err = keystore.Export(o.out, selected, next); err != nil {
+			return nil, err
+		}
+		fmt.Fprintf(os.Stderr, "已导出 %d 个条目；原密钥库保持不变。\n", len(selected))
 	case "import-env":
 		for name, value := range imported {
 			values[name] = value

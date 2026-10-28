@@ -2,7 +2,7 @@
 
 [返回 README](../README.md) · [备份与迁移](migration.md) · [文件格式](format.md)
 
-本文描述 v0.5.0。`delete`、`--version` 和改进的 zwork 路径查找自此版本提供。
+本文描述 v0.5.0 及当前源码新增的 `export`（尚未发布，需从源码构建）。`delete`、`--version` 和改进的 zwork 路径查找自此版本提供。
 
 个人加密密钥库。运行 Go 二进制无需额外语言运行时或加密依赖。默认数据目录为 `~/.config/z-keystore`，密钥名称和值一起加密保存到 `vault.json`。目录权限 700，数据和锁文件 600。使用 Scrypt（N=32768、r=8、p=1）派生 AES-256-GCM 密钥，每次保存生成新 salt 和 nonce，写入使用文件锁与原子替换。
 
@@ -25,6 +25,7 @@ zkey init
 | `zkey init` | 无参数；输入两次新主密码，已有库时拒绝覆盖 | `zkey init` |
 | `zkey set NAME [--stdin]` | `NAME` 为库中名称；默认隐藏输入值，`--stdin` 从标准输入读取完整文本；覆盖同名条目 | `zkey set work/token` |
 | `zkey import-env NAME...` | 至少一个已 export 的变量名，不可重复；保存为同名条目，不接受 `ENV=KEY` 映射或变量值 | `zkey import-env API_TOKEN SERVICE_TOKEN` |
+| `zkey export NAME... --out PATH` | 至少一个不重复的已存在名称；必填输出文件，父目录须存在，拒绝覆盖；原库保留，新库单独设置密码；源码新增 | `zkey export work/token ssh/work --out ./project-vault.json` |
 | `zkey delete NAME` | 删除指定条目；显示名称并交互确认，不显示值，不提供强制删除参数 | `zkey delete work/token` |
 | `zkey get NAME` | 读取一个条目，将明文原样输出到 stdout，不追加换行 | `zkey get work/token` |
 | `zkey list` | 无参数；解锁后仅列出名称，按名称排序 | `zkey list` |
@@ -83,6 +84,22 @@ zkey list
 ```
 
 上例假定变量已有非空值；`export NAME` 不会自动生成值。命令只读取当前终端传给进程的环境，不读取 `.env` 文件，也不自动加载 shell 配置。导入完成后，重新运行相同命令可更新这些条目；其他条目保持不变。
+
+### 导出部分条目
+
+```bash
+# NAME 是库内名称，不是当前 shell 的环境变量。
+zkey export work/api work/private-key --out ./project-vault.json
+
+# 参数可放在名称前；--out=PATH 与 --out PATH 等价。
+zkey export --out=./ssh-vault.json ssh/work
+```
+
+先输入原库主密码，全部名称存在后，为新库输入两次主密码；新旧密码可不同，没有长度限制。只有明确指定的条目进入新库，名称及值一起加密；多行文本和 SSH 快照原样保留。`ssh/work` 按一个完整条目复制，与 `zkey ssh export work` 释放 SSH 配置/私钥到磁盘的行为不同。
+
+`--out` 必须且只能指定一次，不支持 stdout（`-`）、覆盖、通配符或自动删除。名称重复/无效、缺少参数、条目不存在、原密码错误、新密码不一致或输入被取消时失败，不改写原库，不生成目标库。目标已存在时（普通文件、目录、符号链接或原库本身）拒绝覆盖；目标父目录须已存在，命令不会创建父目录。写入先生成权限 `600` 的临时密文，再以不可覆盖方式发布到目标路径；目标所在文件系统须支持硬链接，失败时不会退回覆盖写入。不生成明文中间文件，正常结束会移除临时密文；强制终止可能留下临时密文，不应将它当作成功导出的库。
+
+只报告成功导出的数量，不输出值。源库所有条目保持不变。迁移时将新文件作为目标设备的 `vault.json` 使用，并输入新密码；详见[跨设备迁移](migration.md#跨设备迁移与恢复)。忘记新密码时可以从仍保留的原库重新导出，但无法恢复已忘记的密码。
 
 Python 程序使用 `run` 注入的变量即可：
 
@@ -295,7 +312,7 @@ OpenSSH 多数选项采用首次匹配的值，`Host *` 和 Include 的位置会
 
 ## 验证与 Python 兼容性
 
-Python 源码 `z_keystore.py`、`zwork.py` 保留为格式参照和兼容验证入口，不参与 Go 版运行。Python 版仍需 `requirements.txt` 中的依赖；需要运行参考实现时，可用已安装该依赖的解释器显式运行旧脚本。Go 是唯一新增功能实现；Python 参考版不支持新增的 `import-env`、`ssh`、`delete` 或 `--version`，不追求两套实现的功能同步，也不删除已有参考代码或测试。两种实现均可直接读写 v1 文件，改密码后另一实现使用新密码即可。
+Python 源码 `z_keystore.py`、`zwork.py` 保留为格式参照和兼容验证入口，不参与 Go 版运行。Python 版仍需 `requirements.txt` 中的依赖；需要运行参考实现时，可用已安装该依赖的解释器显式运行旧脚本。Go 是唯一新增功能实现；Python 参考版不支持新增的 `import-env`、`export`、`ssh`、`delete` 或 `--version`，不追求两套实现的功能同步，也不删除已有参考代码或测试。两种实现均可直接读写 v1 文件，改密码后另一实现使用新密码即可。
 
 运行 Go 单元测试和静态检查：
 
@@ -319,6 +336,8 @@ ZKEY_GO=/tmp/zkey-compat ZWORK_GO=/tmp/zwork-compat ZELLIJ_BIN="$HOME/.local/bin
 ```
 
 测试只使用临时 HOME、虚拟口令和虚拟密钥。跨语言用例覆盖双向创建/读取、改写/改密码、多行与中文、空/短口令、错误密码/篡改、权限/链接、无终端拒绝、Ctrl-C 回显恢复，以及 run 的 PID/退出码/PATH/锁释放。测试环境必须允许创建伪终端并打开 `/dev/tty`；不设置 `ZKEY_GO` 时跳过跨语言测试。
+
+`tests/test_export.py` 通过真实伪终端验证选择性导出、Python 回读、Go 重新读取/导出、空/短密码、错误密码、缺失条目、密码不一致、取消、无终端和拒绝覆盖；检查原库内容及 inode/mtime 保持不变，目标权限为 `600`。Go 测试另验证并发导出同一路径只有一个成功。 已实际验证 macOS ARM64 导出 → Linux x86_64 解锁并用新密码再次导出 → macOS 解锁，Go 与 Python 均可读取；全程使用虚拟数据，原库不变。
 
 SSH 导入导出集成测试只使用临时 HOME 和生成的测试密钥。设置 `ZKEY_SSHD` 后，还会以当前用户启动随机回环端口的临时 SSH 服务，检查直连与 ProxyJump 认证；不修改系统 SSH 服务：
 

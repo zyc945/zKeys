@@ -73,3 +73,31 @@ func TestParseRunAndSet(t *testing.T) {
 		}
 	}
 }
+
+func TestParseExport(t *testing.T) {
+	for _, args := range [][]string{
+		{"export", "work/api", "ssh/work", "--out", "./project.json"},
+		{"export", "--out=./project.json", "work/api", "ssh/work"},
+		{"export", "work/api", "--out", "./project.json", "ssh/work"},
+	} {
+		o, err := parse(args)
+		if err != nil || o.action != "export" || o.out != "./project.json" || len(o.names) != 2 || o.names[0] != "work/api" || o.names[1] != "ssh/work" {
+			t.Fatal(o, err)
+		}
+	}
+	for _, args := range [][]string{
+		{"export"}, {"export", "key"}, {"export", "--out", "file"},
+		{"export", "key", "--out"}, {"export", "key", "--out="},
+		{"export", "key", "--out", "-"}, {"export", "key", "--out=-"},
+		{"export", "key", "key", "--out", "file"},
+		{"export", "bad name", "--out", "file"},
+		{"export", strings.Repeat("A", 129), "--out", "file"},
+		{"export", "key", "--out", "file", "--out=other"},
+		{"export", "key", "--out", "--out=other"},
+		{"export", "key", "--out", "file", "--force"},
+	} {
+		if _, err := parse(args); err == nil {
+			t.Fatalf("accepted %q", args)
+		}
+	}
+}
