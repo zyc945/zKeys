@@ -6,7 +6,7 @@
 
 ## 安装
 
-v0.6.0 新增 `zkey export NAME... --out PATH`，将部分条目导出为独立密钥库，保留原库；keystore v1 格式保持不变。
+v0.7.0 新增 `zkey import PATH`，将独立密钥库合并到当前库；同名条目整次失败，保留导入文件和目标库原密码，keystore v1 格式保持不变。
 
 当前正式版本使用 Go，保留 Python 版已有命令和 v1 keystore 格式。目标设备不需要 Python、pip、虚拟环境、Go 或单独的加密库。`zwork` 仍需安装 Zellij；从 Git 子目录发现项目配置时需要 Git。支持 macOS / Linux，不支持 Windows。
 
@@ -23,16 +23,16 @@ v0.6.0 新增 `zkey export NAME... --out PATH`，将部分条目导出为独立�
 
 使用 `uname -s` 和 `uname -m` 确认设备类型。不同平台需要不同二进制，`vault.json` 通用。压缩包包含 `zkey`、`zwork`、README 和 README 引用的 `docs/` 文档。
 
-例如下载 `zkeys-v0.6.0-darwin-arm64.tar.gz` 后，在下载目录校验（Linux 可将 `shasum -a 256` 换成 `sha256sum`）：
+例如下载 `zkeys-v0.7.0-darwin-arm64.tar.gz` 后，在下载目录校验（Linux 可将 `shasum -a 256` 换成 `sha256sum`）：
 
 ```bash
-shasum -a 256 zkeys-v0.6.0-darwin-arm64.tar.gz
+shasum -a 256 zkeys-v0.7.0-darwin-arm64.tar.gz
 ```
 
 确认 SHA-256 摘要与 `SHA256SUMS` 中对应文件的摘要一致，再解压：
 
 ```bash
-tar -xzf zkeys-v0.6.0-darwin-arm64.tar.gz
+tar -xzf zkeys-v0.7.0-darwin-arm64.tar.gz
 ```
 
 校验和用于检查下载完整性，下载来源仍应为该仓库的 Release。若浏览器下载的文件被 macOS Gatekeeper 拦截，先按系统提示确认来源并允许运行，不要关闭系统安全机制。
@@ -80,14 +80,14 @@ CGO_ENABLED=0 go build -trimpath -o zwork ./cmd/zwork
 然后按上面的安装步骤安装。构建四个平台的包：
 
 ```bash
-./scripts/build-release.sh v0.6.0
+./scripts/build-release.sh v0.7.0
 ```
 
-产物位于 `dist/v0.6.0/`，包含四个压缩包和 `SHA256SUMS`；已存在的发布目录会被拒绝覆盖。Linux 产物关闭 CGO，不依赖目标设备的 glibc 或 OpenSSL；macOS 仍使用操作系统提供的系统库。构建脚本不会发布或部署。
+产物位于 `dist/v0.7.0/`，包含四个压缩包和 `SHA256SUMS`；已存在的发布目录会被拒绝覆盖。Linux 产物关闭 CGO，不依赖目标设备的 glibc 或 OpenSSL；macOS 仍使用操作系统提供的系统库。构建脚本不会发布或部署。
 
 ## 最小上手
 
-以下示例适用于 v0.6.0。首次使用，在自己的交互终端中设置主密码。密码不回显，没有硬性长度限制；忘记密码无法恢复。已有或迁移过来的库请跳过 `init`。
+以下示例适用于 v0.7.0。首次使用，在自己的交互终端中设置主密码。密码不回显，没有硬性长度限制；忘记密码无法恢复。已有或迁移过来的库请跳过 `init`。
 
 ```bash
 zkey --version
@@ -124,9 +124,9 @@ zkey export ssh/work --out ./ssh-vault.json
 
 导出的文件可按[跨设备迁移步骤](docs/migration.md#跨设备迁移与恢复)安装到目标设备的 `~/.config/z-keystore/vault.json`，使用新密码解锁；已有库先备份，不直接覆盖。导出不增加多库切换或合并功能。完整错误行为见[命令文档](docs/commands.md#导出部分条目)。
 
-## 合并导入条目（源码新增，尚未发布）
+## 合并导入条目
 
-`zkey import PATH` 将一个 v1 keystore 中的全部条目加入当前库，保留导入文件和目标库原密码。此命令需从最新源码构建；v0.6.0 发布二进制尚不支持。
+`zkey import PATH` 将一个 v1 keystore 中的全部条目加入当前库，保留导入文件和目标库原密码。此命令自 v0.7.0 提供。
 
 ```bash
 # 文件属于当前用户，权限为 600；传输后先确认权限。
